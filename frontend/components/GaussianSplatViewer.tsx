@@ -19,66 +19,54 @@ const VERTICAL_LABEL: Record<string, string> = {
 };
 
 export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, vertical }: ViewerProps) {
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
-  const [fps, setFps] = useState(0);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!containerRef.current) return;
     if (!splatUrl && !glbUrl) {
       setError('No hay modelo disponible');
       setStatus('error');
       return;
     }
 
-    let animFrameId: number;
     let viewer: any;
 
     async function init() {
       try {
-        // Dynamic import to avoid SSR issues
-        const THREE = await import('three');
         const GS = await import('@mkkellogg/gaussian-splats-3d');
 
-        const container = canvasRef.current!;
-        const w = container.clientWidth;
-        const h = container.clientHeight;
+        const container = containerRef.current!;
 
-        // Renderer
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(w, h);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setClearColor(0x0a0a0a);
-        container.appendChild(renderer.domElement);
-
-        // Scene + camera
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 500);
-        camera.position.set(0, 1, 3);
-
-        // Gaussian splat viewer wrapper
         viewer = new GS.Viewer({
-          renderer,
-          scene,
-          camera,
-          selfDrivenMode: false,
+          selfDrivenMode: true,
           useBuiltInControls: true,
-          controlsNode: container,
+          rootElement: container,
+          ignoreDevicePixelRatio: false,
+          gpuAcceleratedSort: true,
+          sharedMemoryForWorkers: false,
+          integerBasedSort: false,
+          halfPrecisionCovariancesOnGPU: true,
+          dynamicScene: false,
+          webXRMode: GS.WebXRMode.None,
+          renderMode: GS.RenderMode.OnChange,
+          sceneRevealMode: GS.SceneRevealMode.Gradual,
+          logLevel: GS.LogLevel.None,
+          camera: undefined,
+          renderer: undefined,
         });
 
-        setStatus('loading');
-
-        // Load SPZ splat
         const urlToLoad = splatUrl || glbUrl!;
-        const format = splatUrl
-          ? GS.SceneFormat.SPZ
-          : GS.SceneFormat.GLB;
+        const format = splatUrl ? GS.SceneFormat.SPZ : GS.SceneFormat.GLB;
 
         await viewer.addSplatScene(urlToLoad, {
           format,
           showLoadingUI: false,
+          position: [0, 0, 0],
+          rotation: [0, 0, 0, 1],
+          scale: [1, 1, 1],
           onProgress: (pct: number) => {
             if (pct >= 1) setStatus('ready');
           },
@@ -86,43 +74,14 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
 
         setStatus('ready');
         viewerRef.current = viewer;
-
-        // Resize handler
-        const onResize = () => {
-          const nw = container.clientWidth;
-          const nh = container.clientHeight;
-          camera.aspect = nw / nh;
-          camera.updateProjectionMatrix();
-          renderer.setSize(nw, nh);
-        };
-        window.addEventListener('resize', onResize);
-
-        // Render loop
-        let lastTime = performance.now();
-        let frameCount = 0;
-        const animate = () => {
-          animFrameId = requestAnimationFrame(animate);
-          viewer.update();
-          renderer.render(scene, camera);
-
-          frameCount++;
-          const now = performance.now();
-          if (now - lastTime >= 1000) {
-            setFps(frameCount);
-            frameCount = 0;
-            lastTime = now;
-          }
-        };
-        animate();
+        viewer.start();
 
         return () => {
-          window.removeEventListener('resize', onResize);
-          cancelAnimationFrame(animFrameId);
-          renderer.dispose();
-          container.removeChild(renderer.domElement);
+          viewer.stop();
+          viewer.dispose?.();
         };
       } catch (err) {
-        console.error('Viewer init error:', err);
+        console.error('Viewer error:', err);
         setError((err as Error).message);
         setStatus('error');
       }
@@ -130,17 +89,14 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
 
     const cleanup = init();
     return () => {
-      cancelAnimationFrame(animFrameId);
       cleanup.then((fn) => fn?.());
     };
   }, [splatUrl, glbUrl]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0a0a' }}>
-      {/* Three.js canvas container */}
-      <div ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Loading overlay */}
       {status === 'loading' && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -152,7 +108,6 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
         </div>
       )}
 
-      {/* Error overlay */}
       {status === 'error' && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -164,12 +119,11 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
         </div>
       )}
 
-      {/* HUD — top left */}
       {status === 'ready' && projectName && (
         <div style={{
           position: 'absolute', top: 16, left: 16, background: 'rgba(0,0,0,0.65)',
           backdropFilter: 'blur(8px)', borderRadius: 10, padding: '10px 16px',
-          border: '1px solid rgba(255,255,255,0.08)', zIndex: 5,
+          border: '1px solid rgba(255,255,255,0.08)', zIndex: 5, pointerEvents: 'none',
         }}>
           <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#f1f5f9' }}>{projectName}</p>
           {vertical && (
@@ -180,23 +134,11 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
         </div>
       )}
 
-      {/* FPS counter — bottom right */}
-      {status === 'ready' && (
-        <div style={{
-          position: 'absolute', bottom: 16, right: 16,
-          background: 'rgba(0,0,0,0.5)', borderRadius: 6,
-          padding: '3px 8px', fontSize: '0.7rem', color: '#475569', zIndex: 5,
-        }}>
-          {fps} fps
-        </div>
-      )}
-
-      {/* Controls hint */}
       {status === 'ready' && (
         <div style={{
           position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '6px 14px',
-          fontSize: '0.75rem', color: '#475569', zIndex: 5, whiteSpace: 'nowrap',
+          fontSize: '0.75rem', color: '#475569', zIndex: 5, whiteSpace: 'nowrap', pointerEvents: 'none',
         }}>
           🖱️ Arrastrar para rotar · Scroll para zoom · Click derecho para mover
         </div>
