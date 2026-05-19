@@ -1,6 +1,5 @@
-import { orchestrate } from './ClaudeOrchestrator.js';
+import { generateScene, generateMesh, type OrchestrationResult } from './DirectOrchestrator.js';
 import type { ProcessingJob, ProcessingOutput, ProcessorResult } from '../types/index.js';
-import { VERTICAL_CONFIGS } from '../config/verticals.js';
 
 export abstract class BaseProcessor {
   protected vertical: string;
@@ -11,22 +10,18 @@ export abstract class BaseProcessor {
     this.job = job;
   }
 
-  protected getSystemPrompt(): string {
-    const config = VERTICAL_CONFIGS[this.vertical as keyof typeof VERTICAL_CONFIGS];
-    return `You are processing a ${config.name} image.
-Purpose: ${config.description}
-Required features: ${config.features.join(', ')}
-Target export formats: ${config.exportFormats.join(', ')}
+  protected async orchestrate3D(): Promise<OrchestrationResult> {
+    const imageUrl = this.job.imagePath;
+    const name = this.job.metadata?.name as string | undefined ?? this.vertical;
 
-Main task: ${config.aiPrompt}`;
-  }
-
-  protected async orchestrate3D() {
-    return orchestrate(
-      this.job.vertical,
-      this.job.imagePath,
-      this.getSystemPrompt()
-    );
+    const sceneVerticals = ['real_estate', 'museum', 'events'];
+    if (sceneVerticals.includes(this.vertical)) {
+      const worldLabs = await generateScene(imageUrl, name);
+      return { worldLabs, rawOutputs: [{ tool: 'generate_3d_scene', result: worldLabs }], analysis: '' };
+    } else {
+      const fal = await generateMesh(imageUrl);
+      return { fal, rawOutputs: [{ tool: 'generate_3d_mesh', result: fal }], analysis: '' };
+    }
   }
 
   abstract process(): Promise<ProcessorResult>;

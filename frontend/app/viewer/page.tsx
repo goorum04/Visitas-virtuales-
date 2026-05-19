@@ -1,70 +1,90 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { api } from '../../lib/api';
+import type { Project, Output } from '../../lib/api';
+
+// Three.js no funciona en SSR
+const GaussianSplatViewer = dynamic(() => import('../../components/GaussianSplatViewer'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
+      Iniciando visor 3D...
+    </div>
+  ),
+});
 
 export default function ViewerPage() {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [glbUrl, setGlbUrl] = useState<string | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
-    const url = params.get('url');
-    setProjectId(id);
-    setGlbUrl(url);
-    setLoading(false);
+    if (!id) { setError('Falta el parámetro ?id='); setLoading(false); return; }
+    api.projects.get(id)
+      .then((p) => { setProject(p); setLoading(false); })
+      .catch((err: Error) => { setError(err.message); setLoading(false); });
   }, []);
 
-  function copyShareLink() {
-    navigator.clipboard.writeText(window.location.href);
-    alert('Link copiado!');
-  }
+  const splatOut = project?.outputs?.find((o: Output) => o.format === 'spz');
+  const glbOut   = project?.outputs?.find((o: Output) => o.format === 'glb');
 
   return (
-    <main style={{ minHeight: '100vh', background: '#000', display: 'flex', flexDirection: 'column' }}>
-      {/* Toolbar */}
-      <header style={{ padding: '12px 20px', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1f2937', position: 'sticky', top: 0, zIndex: 10 }}>
-        <a href="/dashboard" style={{ color: '#94a3b8', textDecoration: 'none', fontSize: '0.875rem' }}>
-          ← Dashboard
-        </a>
-        <span style={{ color: '#e2e8f0', fontWeight: 600 }}>Visor 3D</span>
-        <button onClick={copyShareLink} style={{ padding: '6px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.875rem' }}>
-          Compartir
-        </button>
+    <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a', overflow: 'hidden' }}>
+      <header style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1f2937', background: 'rgba(10,10,10,0.95)', backdropFilter: 'blur(10px)', flexShrink: 0, zIndex: 20 }}>
+        <a href="/dashboard" style={{ color: '#64748b', fontSize: '0.875rem', textDecoration: 'none' }}>← Dashboard</a>
+        <span style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.95rem' }}>{project?.name || 'Visor 3D'}</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => { navigator.clipboard.writeText(window.location.href); alert('Link copiado'); }} style={{ padding: '6px 14px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
+            Compartir
+          </button>
+          {glbOut && (
+            <a href={glbOut.url} download style={{ padding: '6px 14px', background: '#3b82f6', color: '#fff', borderRadius: 6, fontSize: '0.8rem', textDecoration: 'none' }}>
+              ↓ GLB
+            </a>
+          )}
+        </div>
       </header>
 
-      {/* 3D Viewer area */}
-      <div ref={canvasRef} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-            <div style={{ fontSize: '2rem', marginBottom: 12 }}>⏳</div>
-            <p>Cargando tour 3D...</p>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {loading && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b' }}>
+            Cargando...
           </div>
-        ) : glbUrl ? (
-          /* model-viewer web component for GLB rendering */
-          <div style={{ width: '100%', height: 'calc(100vh - 56px)', position: 'relative' }}>
-            {/* @ts-expect-error model-viewer custom element */}
-            <model-viewer
-              src={glbUrl}
-              alt="Tour 3D"
-              auto-rotate
-              camera-controls
-              style={{ width: '100%', height: '100%' }}
-            />
+        )}
+        {error && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
+            <p style={{ color: '#ef4444' }}>{error}</p>
+            <a href="/dashboard" style={{ color: '#3b82f6' }}>← Volver</a>
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', color: '#64748b', padding: 40 }}>
-            <div style={{ fontSize: '3rem', marginBottom: 16 }}>🏠</div>
-            <p>No se encontró el modelo 3D.</p>
-            <p style={{ fontSize: '0.875rem' }}>ID del proyecto: <code style={{ background: '#1e293b', padding: '2px 6px', borderRadius: 4 }}>{projectId || 'N/A'}</code></p>
+        )}
+        {project?.status === 'processing' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16, color: '#94a3b8' }}>
+            <div style={{ width: 56, height: 56, border: '3px solid #1f2937', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <p style={{ fontSize: '1.1rem', margin: 0 }}>Generando tu tour 3D...</p>
+            <p style={{ fontSize: '0.85rem', color: '#475569', margin: 0 }}>Tiempo estimado: ~5 minutos</p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          </div>
+        )}
+        {project?.status === 'completed' && (splatOut || glbOut) && (
+          <GaussianSplatViewer
+            splatUrl={splatOut?.url}
+            glbUrl={glbOut?.url}
+            projectName={project.name}
+            vertical={project.vertical}
+          />
+        )}
+        {project?.status === 'failed' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
+            <p style={{ color: '#ef4444' }}>Error en la generación</p>
+            <p style={{ color: '#64748b', fontSize: '0.875rem' }}>{project.error}</p>
+            <a href="/dashboard" style={{ color: '#3b82f6' }}>← Volver</a>
           </div>
         )}
       </div>
-
-      {/* model-viewer script */}
-      <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js" />
     </main>
   );
 }

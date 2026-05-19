@@ -15,7 +15,7 @@ imageQueue.process(3, async (job) => {
     await updateProjectStatus(projectId, 'processing');
     await job.progress(5);
 
-    const result = await orchestrator.processImage(vertical, imageUrl);
+    const result = await orchestrator.processImage(vertical, imageUrl, projectName);
     await job.progress(80);
 
     // Persist all outputs to DB

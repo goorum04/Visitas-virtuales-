@@ -47,6 +47,7 @@ export interface ProcessingJob {
   error?: string;
   createdAt: Date;
   completedAt?: Date;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ProcessorResult {

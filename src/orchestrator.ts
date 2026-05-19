@@ -10,7 +10,7 @@ import { ArchitectureProcessor } from './verticals/architecture/ArchitectureProc
 import { BaseProcessor } from './processors/BaseProcessor.js';
 
 export class ImageBlasterOrchestrator {
-  async processImage(vertical: Vertical, imagePath: string): Promise<ProcessorResult> {
+  async processImage(vertical: Vertical, imagePath: string, projectName?: string): Promise<ProcessorResult> {
     console.log(`\n🚀 Image-Blaster starting: ${vertical}`);
     console.log(`   Image: ${imagePath}`);
 
@@ -22,6 +22,7 @@ export class ImageBlasterOrchestrator {
       status: 'processing',
       outputs: [],
       createdAt: new Date(),
+      metadata: { name: projectName },
     };
 
     const processor = this.selectProcessor(vertical, job);
