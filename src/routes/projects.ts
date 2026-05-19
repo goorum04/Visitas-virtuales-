@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { requireAuth, PLAN_LIMITS } from '../middleware/auth.js';
 import {
   createProject,
@@ -9,10 +12,20 @@ import {
   getOutputsByProject,
   query,
 } from '../lib/db.js';
-import { uploadBuffer } from '../lib/storage.js';
 import { enqueueImageJob } from '../lib/queue.js';
 import { ALL_VERTICALS } from '../config/verticals.js';
 import type { Vertical } from '../types/index.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = join(__dirname, '..', '..', 'uploads');
+mkdirSync(UPLOADS_DIR, { recursive: true });
+
+function saveLocally(buffer: Buffer, filename: string): string {
+  const dest = join(UPLOADS_DIR, filename);
+  writeFileSync(dest, buffer);
+  const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+  return `${baseUrl}/uploads/${filename}`;
+}
 
 const router = Router();
 
@@ -55,11 +68,11 @@ router.post('/create/:vertical', requireAuth, upload.single('image'), async (req
       }
     }
 
-    // Upload image to S3
+    // Save image locally (no S3 needed)
     let imageUrl: string;
     if (req.file) {
-      const filename = `${uuidv4()}_original${getExt(req.file.originalname)}`;
-      imageUrl = await uploadBuffer(req.file.buffer, uuidv4(), vertical, filename);
+      const filename = `${uuidv4()}${getExt(req.file.originalname)}`;
+      imageUrl = saveLocally(req.file.buffer, filename);
     } else if (req.body.imagePath) {
       imageUrl = req.body.imagePath; // Allow URL for dev/testing
     } else {

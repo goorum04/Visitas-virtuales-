@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import authRouter from './routes/auth.js';
@@ -38,8 +38,13 @@ async function runMigrations() {
 
 const app = express();
 
-app.use(cors({ origin: true })); // allow all origins in dev
+// Serve uploaded images publicly
+const UPLOADS_DIR = join(__dirname, '..', 'uploads');
+mkdirSync(UPLOADS_DIR, { recursive: true });
+
+app.use(cors({ origin: true }));
 app.use(express.json());
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // ===== Routes =====
 app.use('/auth', authRouter);
