@@ -10,14 +10,20 @@ export interface ImageJobData {
   projectName: string;
 }
 
-const redisConfig = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  password: process.env.REDIS_PASSWORD,
-};
+const redisUrl = process.env.REDIS_URL;
+const redisConfig = redisUrl
+  ? {
+      // Railway provides a full Redis URL
+      ...(redisUrl.startsWith('rediss://') ? { tls: { rejectUnauthorized: false } } : {}),
+    }
+  : {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      password: process.env.REDIS_PASSWORD,
+    };
 
 export const imageQueue = new Bull<ImageJobData>('image-generation', {
-  redis: redisConfig,
+  ...(redisUrl ? { url: redisUrl } : { redis: redisConfig }),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
