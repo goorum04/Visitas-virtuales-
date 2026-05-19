@@ -10,15 +10,20 @@ import {
   getProjectsByUser,
   getProjectById,
   getOutputsByProject,
+  updateProjectStatus,
+  saveOutput,
+  incrementUsage,
   query,
 } from '../lib/db.js';
-import { enqueueImageJob } from '../lib/queue.js';
 import { ALL_VERTICALS } from '../config/verticals.js';
+import { ImageBlasterOrchestrator } from '../orchestrator.js';
 import type { Vertical } from '../types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = join(__dirname, '..', '..', 'uploads');
 mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const orchestrator = new ImageBlasterOrchestrator();
 
 function saveLocally(buffer: Buffer, filename: string): string {
   const dest = join(UPLOADS_DIR, filename);
@@ -27,11 +32,28 @@ function saveLocally(buffer: Buffer, filename: string): string {
   return `${baseUrl}/uploads/${filename}`;
 }
 
+async function processInBackground(projectId: string, userId: string, vertical: Vertical, imageUrl: string, projectName: string) {
+  try {
+    await updateProjectStatus(projectId, 'processing');
+    const result = await orchestrator.processImage(vertical, imageUrl, projectName);
+    for (const output of result.outputs) {
+      await saveOutput(projectId, output.format, output.url || output.path, output.size, output.metadata);
+    }
+    await updateProjectStatus(projectId, 'completed');
+    await incrementUsage(userId);
+    console.log(`[Worker] ✅ Done: ${result.outputs.length} outputs — project ${projectId}`);
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Worker] ❌ Failed project ${projectId}: ${message}`);
+    await updateProjectStatus(projectId, 'failed', message);
+  }
+}
+
 const router = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp'];
     cb(null, allowed.includes(file.mimetype));
@@ -50,7 +72,6 @@ router.post('/create/:vertical', requireAuth, upload.single('image'), async (req
     const { name = 'Sin título' } = req.body;
     const { userId, plan } = req.user;
 
-    // Check monthly usage limit (count projects created this month)
     const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
     if (limits.tours > 0) {
       const [row] = await query<{ count: string }>(
@@ -62,19 +83,18 @@ router.post('/create/:vertical', requireAuth, upload.single('image'), async (req
       if (used >= limits.tours) {
         res.status(403).json({
           success: false,
-          error: `Has alcanzado el límite de ${limits.tours} tours/mes del plan ${plan}. Actualiza tu plan.`,
+          error: `Has alcanzado el límite de ${limits.tours} tours/mes del plan ${plan}.`,
         });
         return;
       }
     }
 
-    // Save image locally (no S3 needed)
     let imageUrl: string;
     if (req.file) {
       const filename = `${uuidv4()}${getExt(req.file.originalname)}`;
       imageUrl = saveLocally(req.file.buffer, filename);
     } else if (req.body.imagePath) {
-      imageUrl = req.body.imagePath; // Allow URL for dev/testing
+      imageUrl = req.body.imagePath;
     } else {
       res.status(400).json({ success: false, error: 'Imagen requerida (multipart o imagePath)' });
       return;
@@ -82,18 +102,12 @@ router.post('/create/:vertical', requireAuth, upload.single('image'), async (req
 
     const project = await createProject(userId, name, vertical, imageUrl);
 
-    const jobId = await enqueueImageJob({
-      projectId: project.id,
-      userId,
-      vertical,
-      imagePath: imageUrl,
-      imageUrl,
-      projectName: name,
-    });
+    // Fire and forget — no Redis needed
+    processInBackground(project.id, userId, vertical, imageUrl, name);
 
     res.status(202).json({
       success: true,
-      data: { projectId: project.id, jobId, status: 'processing', vertical, name },
+      data: { projectId: project.id, jobId: project.id, status: 'processing', vertical, name },
     });
   } catch (err) {
     console.error('Create project error:', err);
@@ -123,7 +137,6 @@ router.get('/:id', requireAuth, async (req, res) => {
       res.status(403).json({ success: false, error: 'Acceso denegado' });
       return;
     }
-
     const outputs = await getOutputsByProject(project.id);
     res.json({ success: true, data: { ...project, outputs } });
   } catch (err) {
