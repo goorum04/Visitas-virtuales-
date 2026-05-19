@@ -7,7 +7,7 @@ import {
   getProjectsByUser,
   getProjectById,
   getOutputsByProject,
-  getMonthlyUsage,
+  query,
 } from '../lib/db.js';
 import { uploadBuffer } from '../lib/storage.js';
 import { enqueueImageJob } from '../lib/queue.js';
@@ -37,10 +37,15 @@ router.post('/create/:vertical', requireAuth, upload.single('image'), async (req
     const { name = 'Sin título' } = req.body;
     const { userId, plan } = req.user;
 
-    // Check monthly usage limit
+    // Check monthly usage limit (count projects created this month)
     const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
     if (limits.tours > 0) {
-      const used = await getMonthlyUsage(userId);
+      const [row] = await query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM projects
+         WHERE user_id = $1 AND created_at >= DATE_TRUNC('month', NOW())`,
+        [userId]
+      );
+      const used = parseInt(row?.count || '0', 10);
       if (used >= limits.tours) {
         res.status(403).json({
           success: false,
