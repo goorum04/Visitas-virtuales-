@@ -21,20 +21,28 @@ export async function generateScene(
   const BASE = 'https://api.worldlabs.ai/marble/v1';
   const headers = { 'WLT-Api-Key': key, 'Content-Type': 'application/json' };
 
-  console.log('  [WorldLabs] Submitting generation...');
-  const { data: op } = await axios.post(
-    `${BASE}/worlds:generate`,
-    {
-      display_name: displayName,
-      model: 'marble-1.1',
-      world_prompt: {
-        type: 'image',
-        image_prompt: { source: 'uri', uri: imageUrl },
-        ...(textPrompt ? { text_prompt: textPrompt } : {}),
+  console.log('  [WorldLabs] Submitting generation... image:', imageUrl);
+  let op: any;
+  try {
+    const res = await axios.post(
+      `${BASE}/worlds:generate`,
+      {
+        display_name: displayName,
+        model: 'marble-1.1',
+        world_prompt: {
+          type: 'image',
+          image_prompt: { source: 'uri', uri: imageUrl },
+          ...(textPrompt ? { text_prompt: textPrompt } : {}),
+        },
       },
-    },
-    { headers, timeout: 15_000 }
-  );
+      { headers, timeout: 15_000 }
+    );
+    op = res.data;
+  } catch (err: any) {
+    const body = err.response?.data;
+    console.error('  [WorldLabs] POST error:', err.response?.status, JSON.stringify(body));
+    throw new Error(`WorldLabs ${err.response?.status}: ${JSON.stringify(body) || err.message}`);
+  }
 
   const operationId: string = op.operation_id;
   console.log(`  [WorldLabs] operation_id: ${operationId} — polling every 15s (~5 min total)...`);
