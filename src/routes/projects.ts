@@ -132,6 +132,20 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/projects/:id
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id);
+    if (!project) { res.status(404).json({ success: false, error: 'Proyecto no encontrado' }); return; }
+    if (project.user_id !== req.user.userId) { res.status(403).json({ success: false, error: 'Acceso denegado' }); return; }
+    await query('DELETE FROM project_outputs WHERE project_id = $1', [req.params.id]);
+    await query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
 // GET /api/projects/:id/export/:format
 router.get('/:id/export/:format', requireAuth, async (req, res) => {
   try {

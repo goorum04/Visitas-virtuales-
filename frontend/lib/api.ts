@@ -48,6 +48,7 @@ export const api = {
         return d.data as { projectId: string; status: string };
       });
     },
+    delete: (id: string) => request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
     export: (id: string, format: string) =>
       request<{ format: string; url: string }>(`/api/projects/${id}/export/${format}`),
   },

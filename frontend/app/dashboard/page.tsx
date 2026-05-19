@@ -35,7 +35,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function ProjectCard({ project, onClick }: { project: Project; onClick: () => void }) {
+function ProjectCard({ project, onClick }: { project: Project; onClick: () => void; }) {
   const v = VERTICAL_META[project.vertical] || { icon: '📦', color: '#94a3b8', label: project.vertical };
   return (
     <div onClick={onClick} style={{
@@ -240,6 +240,16 @@ export default function DashboardPage() {
                 {selected.error}
               </div>
             )}
+            <button
+              onClick={async () => {
+                if (!confirm(`¿Borrar "${selected.name}"? Esta acción no se puede deshacer.`)) return;
+                await api.projects.delete(selected.id);
+                setSelected(null);
+                mutate();
+              }}
+              style={{ marginTop: 24, display: 'block', width: '100%', padding: '10px', background: 'transparent', color: '#ef4444', border: '1px solid #ef444444', borderRadius: 8, cursor: 'pointer', fontSize: '0.875rem' }}>
+              Borrar proyecto
+            </button>
           </div>
         </div>
       )}
