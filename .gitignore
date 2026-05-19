@@ -10,3 +10,5 @@ input/*.png
 input/*.jpeg
 .DS_Store
 *.log
+*.rdb
+test_*.ts
