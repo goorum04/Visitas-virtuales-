@@ -100,7 +100,7 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
         // Render loop
         let lastTime = performance.now();
         let frameCount = 0;
-        function animate() {
+        const animate = () => {
           animFrameId = requestAnimationFrame(animate);
           viewer.update();
           renderer.render(scene, camera);
@@ -112,7 +112,7 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
             frameCount = 0;
             lastTime = now;
           }
-        }
+        };
         animate();
 
         return () => {
