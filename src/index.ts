@@ -10,7 +10,7 @@ import { ALL_VERTICALS } from './config/verticals.js';
 
 const app = express();
 
-app.use(cors({ origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }));
+app.use(cors({ origin: true })); // allow all origins in dev
 app.use(express.json());
 
 // ===== Routes =====
