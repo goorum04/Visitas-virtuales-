@@ -28,7 +28,7 @@ export async function generateScene(
       `${BASE}/worlds:generate`,
       {
         display_name: displayName,
-        model: 'marble-1.1',
+        model: 'marble-1.0',
         world_prompt: {
           type: 'image',
           image_prompt: { source: 'uri', uri: imageUrl },
