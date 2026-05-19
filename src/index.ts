@@ -1,12 +1,40 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import authRouter from './routes/auth.js';
 import projectsRouter from './routes/projects.js';
 import webhooksRouter from './routes/webhooks.js';
 import { requireAuth } from './middleware/auth.js';
 import { getQueueStats } from './lib/queue.js';
+import { query } from './lib/db.js';
 import { ALL_VERTICALS } from './config/verticals.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+async function runMigrations() {
+  try {
+    const sqlPath = join(__dirname, '..', 'supabase', 'migrations', '001_init.sql');
+    const sql = readFileSync(sqlPath, 'utf-8');
+    await query(sql);
+    console.log('✅ DB schema initialized');
+
+    // Seed demo user
+    const bcrypt = await import('bcrypt');
+    const hash = await bcrypt.hash('demo1234', 12);
+    await query(
+      `INSERT INTO users (email, password_hash, vertical, plan)
+       VALUES ($1, $2, 'real_estate', 'pro')
+       ON CONFLICT (email) DO NOTHING`,
+      ['demo@visitas.com', hash]
+    );
+    console.log('✅ Demo user ready: demo@visitas.com / demo1234');
+  } catch (err) {
+    console.error('⚠️ Migration failed:', (err as Error).message);
+  }
+}
 
 const app = express();
 
@@ -44,10 +72,13 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
-app.listen(PORT, () => {
-  console.log(`🚀 Image-Blaster API v0.2.0 — port ${PORT}`);
-  console.log(`   Verticals: ${ALL_VERTICALS.join(', ')}`);
-  console.log(`   Worker: npm run worker`);
+
+runMigrations().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🚀 Image-Blaster API v0.2.0 — port ${PORT}`);
+    console.log(`   Verticals: ${ALL_VERTICALS.join(', ')}`);
+    console.log(`   Worker: npm run worker`);
+  });
 });
 
 export default app;
