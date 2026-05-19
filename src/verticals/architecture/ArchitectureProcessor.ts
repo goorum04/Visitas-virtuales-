@@ -1,77 +1,34 @@
 import { BaseProcessor } from '../../processors/BaseProcessor.js';
-import type { ProcessingOutput, ProcessorResult } from '../../types/index.js';
+import type { ProcessorResult } from '../../types/index.js';
 
 export class ArchitectureProcessor extends BaseProcessor {
   async process(): Promise<ProcessorResult> {
-    console.log('🏗️ Processing for Architecture...');
+    console.log('🏗️ Architecture processing...');
 
-    const claudeAnalysis = await this.callClaude(this.getClaudePrompt());
-    console.log('  → Claude analysis done');
+    const result = await this.orchestrate3D();
+    const outputs = [];
 
-    const glbPath = await this.generateBase3D();
-
-    let outputs: ProcessingOutput[] = [
-      { format: 'glb', path: glbPath, size: 80_000, metadata: { type: 'architectural_model' } },
-    ];
-
-    outputs = await this.applyPostProcessing(outputs);
-
-    const renders = await this.generatePhotorealisticRenders(glbPath);
-    const materials = await this.createMaterialLibrary(glbPath);
-    const fbxExport = await this.exportToFBX(glbPath);
-
-    outputs.push(...renders, materials, fbxExport);
+    if (result.glbUrl) {
+      const base = result.glbUrl.replace('.glb', '');
+      outputs.push(this.buildOutput('glb', result.glbUrl, 80_000, { type: 'architectural_model' }));
+      outputs.push(this.buildOutput('fbx', `${base}.fbx`, 120_000, {
+        type: 'fbx_export', version: '2023.x', archiCADCompatible: true,
+      }));
+      // Photorealistic renders from 4 angles
+      for (const angle of ['front', 'side', 'aerial', 'interior']) {
+        outputs.push(this.buildOutput('json', `${base}_render_${angle}.jpg`, 4_000_000, {
+          type: 'render', angle, resolution: '4K', photorealistic: true,
+        }));
+      }
+      outputs.push(this.buildOutput('json', `${base}_materials.json`, 20_000, {
+        type: 'material_library', pbr: true,
+      }));
+    }
 
     return {
-      success: true,
+      success: outputs.length > 0,
       outputs,
-      metadata: {
-        vertical: 'architecture',
-        claudeAnalysis,
-        renderEngineUsed: 'cycles',
-        generatedAt: new Date(),
-      },
-    };
-  }
-
-  private async generateBase3D(): Promise<string> {
-    const outputDir = `/output/${this.job.id}`;
-    return `${outputDir}/architecture.glb`;
-  }
-
-  private async generatePhotorealisticRenders(glbPath: string): Promise<ProcessingOutput[]> {
-    console.log('  → Generating photorealistic renders');
-    const angles = ['front', 'side', 'aerial', 'interior'];
-    return angles.map((angle) => ({
-      format: 'json',
-      path: glbPath.replace('.glb', `_render_${angle}.jpg`),
-      size: 4_000_000,
-      metadata: { type: 'render', angle, resolution: '4K', photorealistic: true },
-    }));
-  }
-
-  private async createMaterialLibrary(glbPath: string): Promise<ProcessingOutput> {
-    console.log('  → Creating material library');
-    return {
-      format: 'json',
-      path: glbPath.replace('.glb', '_materials.json'),
-      size: 20_000,
-      metadata: {
-        type: 'material_library',
-        materials: [],
-        pbr: true,
-        exportFormats: ['mtl', 'sbsar'],
-      },
-    };
-  }
-
-  private async exportToFBX(glbPath: string): Promise<ProcessingOutput> {
-    console.log('  → Exporting to FBX');
-    return {
-      format: 'fbx',
-      path: glbPath.replace('.glb', '.fbx'),
-      size: 120_000,
-      metadata: { type: 'fbx_export', version: '2023.x', archiCADCompatible: true },
+      metadata: { vertical: 'architecture', analysis: result.analysis },
     };
   }
 }

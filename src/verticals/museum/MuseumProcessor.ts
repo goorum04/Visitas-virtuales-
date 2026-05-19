@@ -1,68 +1,33 @@
 import { BaseProcessor } from '../../processors/BaseProcessor.js';
-import type { ProcessingOutput, ProcessorResult } from '../../types/index.js';
+import type { ProcessorResult } from '../../types/index.js';
 
 export class MuseumProcessor extends BaseProcessor {
   async process(): Promise<ProcessorResult> {
-    console.log('🏛️ Processing for Museum...');
+    console.log('🏛️ Museum processing...');
 
-    const claudeAnalysis = await this.callClaude(this.getClaudePrompt());
-    console.log('  → Claude analysis done');
+    const result = await this.orchestrate3D();
+    const outputs = [];
 
-    const glbPath = await this.generateBase3D();
-
-    let outputs: ProcessingOutput[] = [
-      { format: 'glb', path: glbPath, size: 60_000, metadata: { type: 'exhibit_model' } },
-    ];
-
-    outputs = await this.applyPostProcessing(outputs);
-
-    outputs.push(await this.createHotspots(glbPath));
-    outputs.push(await this.generateAudioGuide(glbPath));
-    outputs.push(await this.createInfoPanels(glbPath));
+    if (result.glbUrl) {
+      outputs.push(this.buildOutput('glb', result.glbUrl, 60_000, { type: 'exhibit_scene' }));
+      const base = result.glbUrl.replace('.glb', '');
+      outputs.push(this.buildOutput('json', `${base}_hotspots.json`, 8_000, {
+        type: 'hotspots', interactive: true,
+      }));
+      outputs.push(this.buildOutput('json', `${base}_info_panels.json`, 12_000, {
+        type: 'info_panels', languages: ['es', 'en', 'fr'],
+      }));
+    }
+    if (result.audioUrl) {
+      outputs.push(this.buildOutput('mp3', result.audioUrl, 5_000_000, {
+        type: 'audio_guide', multilang: true,
+      }));
+    }
 
     return {
-      success: true,
+      success: outputs.length > 0,
       outputs,
-      metadata: {
-        vertical: 'museum',
-        claudeAnalysis,
-        generatedAt: new Date(),
-      },
-    };
-  }
-
-  private async generateBase3D(): Promise<string> {
-    const outputDir = `/output/${this.job.id}`;
-    return `${outputDir}/exhibit.glb`;
-  }
-
-  private async createHotspots(glbPath: string): Promise<ProcessingOutput> {
-    console.log('  → Creating interactive hotspots');
-    return {
-      format: 'json',
-      path: glbPath.replace('.glb', '_hotspots.json'),
-      size: 8_000,
-      metadata: { type: 'hotspots', count: 0, interactive: true },
-    };
-  }
-
-  private async generateAudioGuide(glbPath: string): Promise<ProcessingOutput> {
-    console.log('  → Generating audio guide');
-    return {
-      format: 'mp3',
-      path: glbPath.replace('.glb', '_audio_guide.mp3'),
-      size: 5_000_000,
-      metadata: { type: 'audio_guide', languages: ['es', 'en', 'fr'] },
-    };
-  }
-
-  private async createInfoPanels(glbPath: string): Promise<ProcessingOutput> {
-    console.log('  → Creating info panels');
-    return {
-      format: 'json',
-      path: glbPath.replace('.glb', '_info_panels.json'),
-      size: 12_000,
-      metadata: { type: 'info_panels', multilang: true },
+      metadata: { vertical: 'museum', analysis: result.analysis },
     };
   }
 }

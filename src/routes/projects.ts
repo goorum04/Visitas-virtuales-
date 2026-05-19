@@ -1,0 +1,136 @@
+import { Router } from 'express';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
+import { requireAuth, PLAN_LIMITS } from '../middleware/auth.js';
+import {
+  createProject,
+  getProjectsByUser,
+  getProjectById,
+  getOutputsByProject,
+  getMonthlyUsage,
+} from '../lib/db.js';
+import { uploadBuffer } from '../lib/storage.js';
+import { enqueueImageJob } from '../lib/queue.js';
+import { ALL_VERTICALS } from '../config/verticals.js';
+import type { Vertical } from '../types/index.js';
+
+const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
+
+// POST /api/projects/create/:vertical
+router.post('/create/:vertical', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    const vertical = req.params.vertical as Vertical;
+    if (!ALL_VERTICALS.includes(vertical)) {
+      res.status(400).json({ success: false, error: `Vertical inválido: ${vertical}` });
+      return;
+    }
+
+    const { name = 'Sin título' } = req.body;
+    const { userId, plan } = req.user;
+
+    // Check monthly usage limit
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+    if (limits.tours > 0) {
+      const used = await getMonthlyUsage(userId);
+      if (used >= limits.tours) {
+        res.status(403).json({
+          success: false,
+          error: `Has alcanzado el límite de ${limits.tours} tours/mes del plan ${plan}. Actualiza tu plan.`,
+        });
+        return;
+      }
+    }
+
+    // Upload image to S3
+    let imageUrl: string;
+    if (req.file) {
+      const filename = `${uuidv4()}_original${getExt(req.file.originalname)}`;
+      imageUrl = await uploadBuffer(req.file.buffer, uuidv4(), vertical, filename);
+    } else if (req.body.imagePath) {
+      imageUrl = req.body.imagePath; // Allow URL for dev/testing
+    } else {
+      res.status(400).json({ success: false, error: 'Imagen requerida (multipart o imagePath)' });
+      return;
+    }
+
+    const project = await createProject(userId, name, vertical, imageUrl);
+
+    const jobId = await enqueueImageJob({
+      projectId: project.id,
+      userId,
+      vertical,
+      imagePath: imageUrl,
+      imageUrl,
+      projectName: name,
+    });
+
+    res.status(202).json({
+      success: true,
+      data: { projectId: project.id, jobId, status: 'processing', vertical, name },
+    });
+  } catch (err) {
+    console.error('Create project error:', err);
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+// GET /api/projects
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const projects = await getProjectsByUser(req.user.userId);
+    res.json({ success: true, data: projects });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+// GET /api/projects/:id
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Proyecto no encontrado' });
+      return;
+    }
+    if (project.user_id !== req.user.userId) {
+      res.status(403).json({ success: false, error: 'Acceso denegado' });
+      return;
+    }
+
+    const outputs = await getOutputsByProject(project.id);
+    res.json({ success: true, data: { ...project, outputs } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+// GET /api/projects/:id/export/:format
+router.get('/:id/export/:format', requireAuth, async (req, res) => {
+  try {
+    const outputs = await getOutputsByProject(req.params.id);
+    const match = outputs.find((o) => o.format === req.params.format);
+    if (!match) {
+      res.status(404).json({ success: false, error: `No hay output en formato ${req.params.format}` });
+      return;
+    }
+    res.json({ success: true, data: { format: match.format, url: match.url, metadata: match.metadata } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+function getExt(filename: string): string {
+  const match = filename.match(/\.[^.]+$/);
+  return match ? match[0] : '.jpg';
+}
+
+export default router;
