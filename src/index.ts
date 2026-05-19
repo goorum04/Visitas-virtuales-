@@ -8,9 +8,10 @@ import authRouter from './routes/auth.js';
 import projectsRouter from './routes/projects.js';
 import webhooksRouter from './routes/webhooks.js';
 import { requireAuth } from './middleware/auth.js';
-import { getQueueStats } from './lib/queue.js';
-import { query } from './lib/db.js';
+import { getQueueStats, imageQueue } from './lib/queue.js';
+import { query, updateProjectStatus, saveOutput, incrementUsage } from './lib/db.js';
 import { ALL_VERTICALS } from './config/verticals.js';
+import { ImageBlasterOrchestrator } from './orchestrator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -76,13 +77,37 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ success: false, error: 'Error interno del servidor' });
 });
 
+function startWorker() {
+  const orchestrator = new ImageBlasterOrchestrator();
+  imageQueue.process(2, async (job) => {
+    const { projectId, userId, vertical, imageUrl, projectName } = job.data;
+    console.log(`[Worker] Processing: "${projectName}" (${vertical}) — job ${job.id}`);
+    try {
+      await updateProjectStatus(projectId, 'processing');
+      const result = await orchestrator.processImage(vertical, imageUrl, projectName);
+      for (const output of result.outputs) {
+        await saveOutput(projectId, output.format, output.url || output.path, output.size, output.metadata);
+      }
+      await updateProjectStatus(projectId, 'completed');
+      await incrementUsage(userId);
+      console.log(`[Worker] ✅ Done: ${result.outputs.length} outputs — project ${projectId}`);
+    } catch (err) {
+      const message = (err as Error).message;
+      console.error(`[Worker] ❌ Failed job ${job.id}: ${message}`);
+      await updateProjectStatus(projectId, 'failed', message);
+      throw err;
+    }
+  });
+  console.log('🔧 Worker started — waiting for jobs...');
+}
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 runMigrations().then(() => {
+  startWorker();
   app.listen(PORT, () => {
     console.log(`🚀 Image-Blaster API v0.2.0 — port ${PORT}`);
     console.log(`   Verticals: ${ALL_VERTICALS.join(', ')}`);
-    console.log(`   Worker: npm run worker`);
   });
 });
 
