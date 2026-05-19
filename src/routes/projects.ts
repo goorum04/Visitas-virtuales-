@@ -138,7 +138,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
     const project = await getProjectById(req.params.id);
     if (!project) { res.status(404).json({ success: false, error: 'Proyecto no encontrado' }); return; }
     if (project.user_id !== req.user.userId) { res.status(403).json({ success: false, error: 'Acceso denegado' }); return; }
-    await query('DELETE FROM project_outputs WHERE project_id = $1', [req.params.id]);
+    await query('DELETE FROM outputs WHERE project_id = $1', [req.params.id]);
     await query('DELETE FROM projects WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {

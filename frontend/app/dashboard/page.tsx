@@ -243,9 +243,13 @@ export default function DashboardPage() {
             <button
               onClick={async () => {
                 if (!confirm(`¿Borrar "${selected.name}"? Esta acción no se puede deshacer.`)) return;
-                await api.projects.delete(selected.id);
-                setSelected(null);
-                mutate();
+                try {
+                  await api.projects.delete(selected.id);
+                  setSelected(null);
+                  mutate();
+                } catch (err) {
+                  alert('Error al borrar: ' + (err as Error).message);
+                }
               }}
               style={{ marginTop: 24, display: 'block', width: '100%', padding: '10px', background: 'transparent', color: '#ef4444', border: '1px solid #ef444444', borderRadius: 8, cursor: 'pointer', fontSize: '0.875rem' }}>
               Borrar proyecto
