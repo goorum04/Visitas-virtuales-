@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 const VERTICALS = [
   { key: 'real_estate', icon: '🏠', title: 'Inmobiliarias', tagline: 'Virtual tours that sell homes', color: '#3b82f6' },
   { key: 'museum', icon: '🏛️', title: 'Museos', tagline: 'Digitize your exhibits in minutes', color: '#8b5cf6' },

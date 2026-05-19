@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
+
+export const dynamic = 'force-dynamic';
 import { api } from '../../lib/api';
 import type { Project, Output } from '../../lib/api';
 
 // Three.js no funciona en SSR
-const GaussianSplatViewer = dynamic(() => import('../../components/GaussianSplatViewer'), {
+const GaussianSplatViewer = nextDynamic(() => import('../../components/GaussianSplatViewer'), {
   ssr: false,
   loading: () => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
