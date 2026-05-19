@@ -10,20 +10,31 @@ export interface ImageJobData {
   projectName: string;
 }
 
-const redisUrl = process.env.REDIS_URL;
-const redisConfig = redisUrl
-  ? {
-      // Railway provides a full Redis URL
-      ...(redisUrl.startsWith('rediss://') ? { tls: { rejectUnauthorized: false } } : {}),
-    }
-  : {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      password: process.env.REDIS_PASSWORD,
+function buildRedisConfig() {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    const url = new URL(redisUrl);
+    return {
+      host: url.hostname,
+      port: parseInt(url.port || '6379', 10),
+      password: url.password || undefined,
+      username: url.username && url.username !== 'default' ? url.username : undefined,
+      tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
     };
+  }
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD || undefined,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  };
+}
 
 export const imageQueue = new Bull<ImageJobData>('image-generation', {
-  ...(redisUrl ? { url: redisUrl } : { redis: redisConfig }),
+  redis: buildRedisConfig(),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
