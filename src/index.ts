@@ -47,6 +47,25 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 app.use('/uploads', express.static(UPLOADS_DIR));
 
+// CORS proxy for World Labs CDN files (SPZ/GLB)
+app.get('/proxy', async (req, res) => {
+  const url = req.query.url as string;
+  if (!url || !url.startsWith('https://cdn.marble.worldlabs.ai/')) {
+    res.status(400).json({ error: 'Invalid URL' });
+    return;
+  }
+  try {
+    const { default: axios } = await import('axios');
+    const upstream = await axios.get(url, { responseType: 'stream', timeout: 30_000 });
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', String(upstream.headers['content-type'] || 'application/octet-stream'));
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    upstream.data.pipe(res);
+  } catch (err) {
+    res.status(502).json({ error: 'Proxy failed' });
+  }
+});
+
 // ===== Routes =====
 app.use('/auth', authRouter);
 app.use('/api/projects', projectsRouter);

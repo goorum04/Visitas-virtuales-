@@ -31,6 +31,12 @@ export default function ViewerPage() {
       .catch((err: Error) => { setError(err.message); setLoading(false); });
   }, []);
 
+  const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  const proxied = (url?: string) =>
+    url?.includes('cdn.marble.worldlabs.ai')
+      ? `${API}/proxy?url=${encodeURIComponent(url)}`
+      : url;
+
   const splatOut  = project?.outputs?.find((o: Output) => o.format === 'spz');
   const glbOut    = project?.outputs?.find((o: Output) => o.format === 'glb');
   const iframeOut = project?.outputs?.find((o: Output) => o.format === 'url');
@@ -91,8 +97,8 @@ export default function ViewerPage() {
             />
           ) : (splatOut || glbOut) ? (
             <GaussianSplatViewer
-              splatUrl={splatOut?.url}
-              glbUrl={glbOut?.url}
+              splatUrl={proxied(splatOut?.url)}
+              glbUrl={proxied(glbOut?.url)}
               projectName={project.name}
               vertical={project.vertical}
             />
