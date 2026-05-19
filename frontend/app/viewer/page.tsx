@@ -23,6 +23,20 @@ export default function ViewerPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    if (params.get('demo') === '1') {
+      setProject({
+        id: 'demo',
+        name: 'Astronauta (Demo)',
+        vertical: 'real_estate',
+        status: 'completed',
+        created_at: new Date().toISOString(),
+        outputs: [{ format: 'glb', url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb', path: '', size: 0, metadata: {} }],
+      } as unknown as Project);
+      setLoading(false);
+      return;
+    }
+
     const id = params.get('id');
     if (!id) { setError('Falta el parámetro ?id='); setLoading(false); return; }
     api.projects.get(id)

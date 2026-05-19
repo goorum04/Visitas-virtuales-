@@ -166,6 +166,9 @@ export default function DashboardPage() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
+          <a href="/viewer?demo=1" style={{ padding: '8px 14px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, fontSize: '0.875rem', textDecoration: 'none' }}>
+            Demo 3D
+          </a>
           <button onClick={() => setShowUpload(true)} style={{ padding: '8px 18px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}>
             + Nuevo
           </button>
