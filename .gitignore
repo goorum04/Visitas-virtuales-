@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+.env
+*.env.local
+*.env.production
+output/
+input/*.jpg
+input/*.png
+input/*.jpeg
+.DS_Store
+*.log
