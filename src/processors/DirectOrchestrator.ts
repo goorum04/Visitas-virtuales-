@@ -138,6 +138,7 @@ export interface OrchestrationResult {
   analysis: string;
   worldLabs?: WorldLabsAssets;
   fal?: FalMeshResult;
+  audioBuffer?: Buffer;
   rawOutputs: Array<{ tool: string; result: unknown }>;
 }
 
