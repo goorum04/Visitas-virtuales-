@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic';
 import { api } from '../../lib/api';
 import type { Project, Output } from '../../lib/api';
 
-// Three.js no funciona en SSR
 const GaussianSplatViewer = nextDynamic(() => import('../../components/GaussianSplatViewer'), {
   ssr: false,
   loading: () => (
@@ -21,6 +20,7 @@ export default function ViewerPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [useIframe, setUseIframe] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,8 +31,11 @@ export default function ViewerPage() {
       .catch((err: Error) => { setError(err.message); setLoading(false); });
   }, []);
 
-  const splatOut = project?.outputs?.find((o: Output) => o.format === 'spz');
-  const glbOut   = project?.outputs?.find((o: Output) => o.format === 'glb');
+  const splatOut  = project?.outputs?.find((o: Output) => o.format === 'spz');
+  const glbOut    = project?.outputs?.find((o: Output) => o.format === 'glb');
+  const iframeOut = project?.outputs?.find((o: Output) => o.format === 'url');
+
+  const canView = project?.status === 'completed' && (splatOut || glbOut || iframeOut);
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a', overflow: 'hidden' }}>
@@ -40,6 +43,14 @@ export default function ViewerPage() {
         <a href="/dashboard" style={{ color: '#64748b', fontSize: '0.875rem', textDecoration: 'none' }}>← Dashboard</a>
         <span style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.95rem' }}>{project?.name || 'Visor 3D'}</span>
         <div style={{ display: 'flex', gap: 8 }}>
+          {canView && (splatOut || glbOut) && (
+            <button
+              onClick={() => setUseIframe(v => !v)}
+              style={{ padding: '6px 14px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              {useIframe ? '🖥️ Visor 3D' : '🌐 Visor web'}
+            </button>
+          )}
           <button onClick={() => { navigator.clipboard.writeText(window.location.href); alert('Link copiado'); }} style={{ padding: '6px 14px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
             Compartir
           </button>
@@ -71,13 +82,27 @@ export default function ViewerPage() {
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         )}
-        {project?.status === 'completed' && (splatOut || glbOut) && (
-          <GaussianSplatViewer
-            splatUrl={splatOut?.url}
-            glbUrl={glbOut?.url}
-            projectName={project.name}
-            vertical={project.vertical}
-          />
+        {canView && (
+          useIframe && iframeOut ? (
+            <iframe
+              src={iframeOut.url}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              allow="xr-spatial-tracking; fullscreen"
+            />
+          ) : (splatOut || glbOut) ? (
+            <GaussianSplatViewer
+              splatUrl={splatOut?.url}
+              glbUrl={glbOut?.url}
+              projectName={project.name}
+              vertical={project.vertical}
+            />
+          ) : iframeOut ? (
+            <iframe
+              src={iframeOut.url}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              allow="xr-spatial-tracking; fullscreen"
+            />
+          ) : null
         )}
         {project?.status === 'failed' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
