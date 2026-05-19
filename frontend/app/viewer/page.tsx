@@ -20,7 +20,6 @@ export default function ViewerPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [useIframe, setUseIframe] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,17 +30,8 @@ export default function ViewerPage() {
       .catch((err: Error) => { setError(err.message); setLoading(false); });
   }, []);
 
-  const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-  const proxied = (url?: string) =>
-    url?.includes('cdn.marble.worldlabs.ai')
-      ? `${API}/proxy?url=${encodeURIComponent(url)}`
-      : url;
-
-  const splatOut  = project?.outputs?.find((o: Output) => o.format === 'spz');
-  const glbOut    = project?.outputs?.find((o: Output) => o.format === 'glb');
-  const iframeOut = project?.outputs?.find((o: Output) => o.format === 'url');
-
-  const canView = project?.status === 'completed' && (splatOut || glbOut || iframeOut);
+  const splatOut = project?.outputs?.find((o: Output) => o.format === 'spz');
+  const glbOut   = project?.outputs?.find((o: Output) => o.format === 'glb');
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a', overflow: 'hidden' }}>
@@ -49,14 +39,6 @@ export default function ViewerPage() {
         <a href="/dashboard" style={{ color: '#64748b', fontSize: '0.875rem', textDecoration: 'none' }}>← Dashboard</a>
         <span style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.95rem' }}>{project?.name || 'Visor 3D'}</span>
         <div style={{ display: 'flex', gap: 8 }}>
-          {canView && (splatOut || glbOut) && (
-            <button
-              onClick={() => setUseIframe(v => !v)}
-              style={{ padding: '6px 14px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}
-            >
-              {useIframe ? '🖥️ Visor 3D' : '🌐 Visor web'}
-            </button>
-          )}
           <button onClick={() => { navigator.clipboard.writeText(window.location.href); alert('Link copiado'); }} style={{ padding: '6px 14px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
             Compartir
           </button>
@@ -88,27 +70,18 @@ export default function ViewerPage() {
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         )}
-        {canView && (
-          useIframe && iframeOut ? (
-            <iframe
-              src={iframeOut.url}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              allow="xr-spatial-tracking; fullscreen"
-            />
-          ) : (splatOut || glbOut) ? (
-            <GaussianSplatViewer
-              splatUrl={proxied(splatOut?.url)}
-              glbUrl={proxied(glbOut?.url)}
-              projectName={project.name}
-              vertical={project.vertical}
-            />
-          ) : iframeOut ? (
-            <iframe
-              src={iframeOut.url}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              allow="xr-spatial-tracking; fullscreen"
-            />
-          ) : null
+        {project?.status === 'completed' && (splatOut || glbOut) && (
+          <GaussianSplatViewer
+            splatUrl={splatOut?.url}
+            glbUrl={glbOut?.url}
+            projectName={project.name}
+            vertical={project.vertical}
+          />
+        )}
+        {project?.status === 'completed' && !splatOut && !glbOut && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
+            <p style={{ color: '#94a3b8' }}>Tour generado — usa el botón ↓ GLB para descargar el modelo</p>
+          </div>
         )}
         {project?.status === 'failed' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
