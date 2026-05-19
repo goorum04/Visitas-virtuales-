@@ -76,7 +76,9 @@ router.post('/create/:vertical', requireAuth, upload.single('image'), async (req
     if (limits.tours > 0) {
       const [row] = await query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM projects
-         WHERE user_id = $1 AND created_at >= DATE_TRUNC('month', NOW())`,
+         WHERE user_id = $1
+           AND status IN ('processing', 'completed')
+           AND created_at >= DATE_TRUNC('month', NOW())`,
         [userId]
       );
       const used = parseInt(row?.count || '0', 10);
