@@ -16,14 +16,11 @@ import {
   query,
 } from '../lib/db.js';
 import { ALL_VERTICALS } from '../config/verticals.js';
-import { ImageBlasterOrchestrator } from '../orchestrator.js';
 import type { Vertical } from '../types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = join(__dirname, '..', '..', 'uploads');
 mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const orchestrator = new ImageBlasterOrchestrator();
 
 function saveLocally(buffer: Buffer, filename: string): string {
   const dest = join(UPLOADS_DIR, filename);
@@ -32,21 +29,10 @@ function saveLocally(buffer: Buffer, filename: string): string {
   return `${baseUrl}/uploads/${filename}`;
 }
 
+// Imported lazily to avoid circular dependency
 async function processInBackground(projectId: string, userId: string, vertical: Vertical, imageUrl: string, projectName: string) {
-  try {
-    await updateProjectStatus(projectId, 'processing');
-    const result = await orchestrator.processImage(vertical, imageUrl, projectName);
-    for (const output of result.outputs) {
-      await saveOutput(projectId, output.format, output.url || output.path, output.size, output.metadata);
-    }
-    await updateProjectStatus(projectId, 'completed');
-    await incrementUsage(userId);
-    console.log(`[Worker] ✅ Done: ${result.outputs.length} outputs — project ${projectId}`);
-  } catch (err) {
-    const message = (err as Error).message;
-    console.error(`[Worker] ❌ Failed project ${projectId}: ${message}`);
-    await updateProjectStatus(projectId, 'failed', message);
-  }
+  const { processInBackground: run } = await import('../index.js');
+  run(projectId, userId, vertical, imageUrl, projectName);
 }
 
 const router = Router();
