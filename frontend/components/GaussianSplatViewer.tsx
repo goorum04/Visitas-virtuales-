@@ -18,92 +18,111 @@ const VERTICAL_LABEL: Record<string, string> = {
   architecture: '🏗️ Arquitectura',
 };
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & {
+        src?: string;
+        alt?: string;
+        'auto-rotate'?: boolean | '';
+        'camera-controls'?: boolean | '';
+        'shadow-intensity'?: string;
+        exposure?: string;
+        style?: React.CSSProperties;
+        loading?: string;
+        reveal?: string;
+        poster?: string;
+        ar?: boolean | '';
+        'ar-modes'?: string;
+        onLoad?: () => void;
+        onError?: (e: Event) => void;
+      }, HTMLElement>;
+    }
+  }
+}
+
 export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, vertical }: ViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
+  const [scriptLoaded, setScriptLoaded] = useState(false);
+  const modelViewerRef = useRef<HTMLElement | null>(null);
 
+  // Load model-viewer script
   useEffect(() => {
-    if (!containerRef.current) return;
-    if (!splatUrl && !glbUrl) {
-      setError('No hay modelo disponible');
-      setStatus('error');
+    if (document.querySelector('script[data-model-viewer]')) {
+      setScriptLoaded(true);
       return;
     }
-
-    let viewer: any;
-
-    async function init() {
-      try {
-        const GS = await import('@mkkellogg/gaussian-splats-3d');
-
-        const container = containerRef.current!;
-
-        viewer = new GS.Viewer({
-          selfDrivenMode: true,
-          useBuiltInControls: true,
-          rootElement: container,
-          ignoreDevicePixelRatio: false,
-          gpuAcceleratedSort: true,
-          sharedMemoryForWorkers: false,
-          integerBasedSort: false,
-          halfPrecisionCovariancesOnGPU: true,
-          dynamicScene: false,
-          webXRMode: GS.WebXRMode.None,
-          renderMode: GS.RenderMode.OnChange,
-          sceneRevealMode: GS.SceneRevealMode.Gradual,
-          logLevel: GS.LogLevel.None,
-          camera: undefined,
-          renderer: undefined,
-        });
-
-        const urlToLoad = splatUrl || glbUrl!;
-        const format = splatUrl ? GS.SceneFormat.SPZ : GS.SceneFormat.GLB;
-
-        await viewer.addSplatScene(urlToLoad, {
-          format,
-          showLoadingUI: false,
-          position: [0, 0, 0],
-          rotation: [0, 0, 0, 1],
-          scale: [1, 1, 1],
-          onProgress: (pct: number) => {
-            if (pct >= 1) setStatus('ready');
-          },
-        });
-
-        setStatus('ready');
-        viewerRef.current = viewer;
-        viewer.start();
-
-        return () => {
-          viewer.stop();
-          viewer.dispose?.();
-        };
-      } catch (err) {
-        console.error('Viewer error:', err);
-        setError((err as Error).message);
-        setStatus('error');
-      }
-    }
-
-    const cleanup = init();
-    return () => {
-      cleanup.then((fn) => fn?.());
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.src = 'https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js';
+    script.dataset.modelViewer = 'true';
+    script.onload = () => setScriptLoaded(true);
+    script.onerror = () => {
+      const s2 = document.createElement('script');
+      s2.type = 'module';
+      s2.src = 'https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js';
+      s2.onload = () => setScriptLoaded(true);
+      s2.onerror = () => { setError('No se pudo cargar el visor 3D'); setStatus('error'); };
+      document.head.appendChild(s2);
     };
-  }, [splatUrl, glbUrl]);
+    document.head.appendChild(script);
+  }, []);
+
+  // Attach load/error events via ref once model-viewer is rendered
+  useEffect(() => {
+    const el = modelViewerRef.current;
+    if (!el || !scriptLoaded) return;
+    const onLoad = () => setStatus('ready');
+    const onError = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      console.error('model-viewer error', detail);
+      setError(detail?.sourceError?.message || 'Error al cargar el modelo 3D');
+      setStatus('error');
+    };
+    el.addEventListener('load', onLoad);
+    el.addEventListener('error', onError);
+    return () => {
+      el.removeEventListener('load', onLoad);
+      el.removeEventListener('error', onError);
+    };
+  }, [scriptLoaded]);
+
+  const modelUrl = glbUrl || splatUrl;
+
+  if (!modelUrl) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#0a0a0a' }}>
+        <p style={{ color: '#94a3b8' }}>No hay modelo 3D disponible</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0a0a' }}>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {scriptLoaded && (
+        <model-viewer
+          ref={(el: HTMLElement | null) => { modelViewerRef.current = el; }}
+          src={modelUrl}
+          alt={projectName || 'Modelo 3D'}
+          auto-rotate=""
+          camera-controls=""
+          shadow-intensity="1"
+          exposure="0.85"
+          loading="eager"
+          reveal="auto"
+          style={{ width: '100%', height: '100%', background: '#0a0a0a', '--poster-color': '#0a0a0a' } as React.CSSProperties}
+        />
+      )}
 
       {status === 'loading' && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', background: '#0a0a0a', zIndex: 10,
+          pointerEvents: 'none',
         }}>
           <div style={{ width: 48, height: 48, border: '3px solid #1f2937', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: 20 }} />
-          <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Cargando escena 3D...</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Cargando modelo 3D...</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>
       )}
@@ -116,6 +135,11 @@ export default function GaussianSplatViewer({ splatUrl, glbUrl, projectName, ver
           <div style={{ fontSize: '3rem', marginBottom: 16 }}>⚠️</div>
           <p style={{ color: '#ef4444', marginBottom: 8 }}>Error cargando el visor</p>
           <p style={{ color: '#64748b', fontSize: '0.8rem', maxWidth: 300, textAlign: 'center' }}>{error}</p>
+          {glbUrl && (
+            <a href={glbUrl} download style={{ marginTop: 16, padding: '8px 16px', background: '#3b82f6', color: '#fff', borderRadius: 6, fontSize: '0.85rem', textDecoration: 'none' }}>
+              ↓ Descargar GLB
+            </a>
+          )}
         </div>
       )}
 
