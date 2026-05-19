@@ -8,17 +8,22 @@ export class EventsProcessor extends BaseProcessor {
     const result = await this.orchestrate3D();
     const outputs = [];
 
-    if (result.glbUrl) {
-      outputs.push(this.buildOutput('glb', result.glbUrl, 35_000, { type: 'event_space' }));
-      outputs.push(this.buildOutput('json', `${result.glbUrl.replace('.glb', '')}_viewer.json`, 5_000, {
-        type: 'web_viewer',
-        shareUrl: `https://app.imageblaster.io/view/${this.job.id}`,
-        embedIframe: `<iframe src="https://app.imageblaster.io/embed/${this.job.id}" width="100%" height="600" />`,
-        analytics: { trackingId: this.job.id, metrics: ['views', 'duration', 'interactions'] },
+    if (result.worldLabs) {
+      const wl = result.worldLabs;
+      if (wl.colliderGlbUrl)  outputs.push(this.buildOutput('glb', wl.colliderGlbUrl, 0, { type: 'event_space' }));
+      if (wl.splatUrl)        outputs.push(this.buildOutput('spz', wl.splatUrl, 0, { type: 'gaussian_splat' }));
+      if (wl.marbleViewerUrl) outputs.push(this.buildOutput('url', wl.marbleViewerUrl, 0, {
+        type: 'shareable_viewer',
+        embedIframe: `<iframe src="${wl.marbleViewerUrl}" width="100%" height="600" frameborder="0" allow="xr-spatial-tracking" />`,
       }));
+      if (wl.thumbnailUrl)    outputs.push(this.buildOutput('jpg', wl.thumbnailUrl, 0, { type: 'thumbnail' }));
     }
-    if (result.audioUrl) {
-      outputs.push(this.buildOutput('mp3', result.audioUrl, 2_000_000, { type: 'event_audio' }));
+
+    if (result.audioBuffer) {
+      outputs.push(this.buildOutput('mp3', `pending_upload_${this.job.id}.mp3`, result.audioBuffer.length, {
+        type: 'event_audio',
+        audioBuffer: result.audioBuffer.toString('base64'),
+      }));
     }
 
     return {

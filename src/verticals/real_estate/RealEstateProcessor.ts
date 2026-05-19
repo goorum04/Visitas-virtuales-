@@ -8,33 +8,50 @@ export class RealEstateProcessor extends BaseProcessor {
     const result = await this.orchestrate3D();
     const outputs = [];
 
-    if (result.glbUrl) {
-      outputs.push(this.buildOutput('glb', result.glbUrl, 45_000, {
-        type: 'scene', sceneId: result.sceneId,
-      }));
-    }
-    if (result.meshUrl) {
-      outputs.push(this.buildOutput('glb', result.meshUrl, 30_000, {
-        type: 'mesh',
-      }));
-    }
-    if (result.audioUrl) {
-      outputs.push(this.buildOutput('mp3', result.audioUrl, 3_200_000, {
-        type: 'ambient_audio', duration: '120s',
-      }));
+    // World Labs: navigable 3D scene
+    if (result.worldLabs) {
+      const wl = result.worldLabs;
+      if (wl.colliderGlbUrl) {
+        outputs.push(this.buildOutput('glb', wl.colliderGlbUrl, 0, {
+          type: 'collider_mesh',
+          source: 'world_labs',
+        }));
+      }
+      if (wl.splatUrl) {
+        outputs.push(this.buildOutput('spz', wl.splatUrl, 0, {
+          type: 'gaussian_splat',
+          source: 'world_labs',
+        }));
+      }
+      if (wl.marbleViewerUrl) {
+        outputs.push(this.buildOutput('url', wl.marbleViewerUrl, 0, {
+          type: 'viewer_url',
+          shareable: true,
+        }));
+      }
+      if (wl.thumbnailUrl) {
+        outputs.push(this.buildOutput('jpg', wl.thumbnailUrl, 0, {
+          type: 'thumbnail',
+        }));
+      }
     }
 
-    // Floor plan + measurements are computed post-hoc from the GLB
-    if (result.glbUrl) {
-      const base = result.glbUrl.replace('.glb', '');
-      outputs.push(this.buildOutput('svg', `${base}_floorplan.svg`, 15_000, { type: 'floor_plan' }));
-      outputs.push(this.buildOutput('json', `${base}_measurements.json`, 5_000, { type: 'measurements' }));
+    // Ambient audio
+    if (result.audioBuffer) {
+      outputs.push(this.buildOutput('mp3', `pending_upload_${this.job.id}.mp3`, result.audioBuffer.length, {
+        type: 'ambient_audio',
+        audioBuffer: result.audioBuffer.toString('base64'),
+      }));
     }
 
     return {
       success: outputs.length > 0,
       outputs,
-      metadata: { vertical: 'real_estate', analysis: result.analysis, rawOutputs: result.rawOutputs },
+      metadata: {
+        vertical: 'real_estate',
+        analysis: result.analysis,
+        worldLabsCaption: result.worldLabs?.caption,
+      },
     };
   }
 }

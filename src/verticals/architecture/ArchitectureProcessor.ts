@@ -8,20 +8,18 @@ export class ArchitectureProcessor extends BaseProcessor {
     const result = await this.orchestrate3D();
     const outputs = [];
 
-    if (result.glbUrl) {
-      const base = result.glbUrl.replace('.glb', '');
-      outputs.push(this.buildOutput('glb', result.glbUrl, 80_000, { type: 'architectural_model' }));
-      outputs.push(this.buildOutput('fbx', `${base}.fbx`, 120_000, {
-        type: 'fbx_export', version: '2023.x', archiCADCompatible: true,
-      }));
-      // Photorealistic renders from 4 angles
-      for (const angle of ['front', 'side', 'aerial', 'interior']) {
-        outputs.push(this.buildOutput('json', `${base}_render_${angle}.jpg`, 4_000_000, {
-          type: 'render', angle, resolution: '4K', photorealistic: true,
-        }));
-      }
-      outputs.push(this.buildOutput('json', `${base}_materials.json`, 20_000, {
-        type: 'material_library', pbr: true,
+    // GLB mesh from FAL for precise geometry
+    if (result.fal) {
+      const f = result.fal;
+      outputs.push(this.buildOutput('glb', f.glbUrl, 0, { type: 'architectural_model', source: 'fal' }));
+      if (f.fbxUrl) outputs.push(this.buildOutput('fbx', f.fbxUrl, 0, { type: 'fbx', archiCADCompatible: true }));
+      if (f.thumbnailUrl) outputs.push(this.buildOutput('jpg', f.thumbnailUrl, 0, { type: 'thumbnail' }));
+    }
+
+    // Also generate navigable scene if World Labs succeeded
+    if (result.worldLabs?.marbleViewerUrl) {
+      outputs.push(this.buildOutput('url', result.worldLabs.marbleViewerUrl, 0, {
+        type: 'walkthrough_viewer',
       }));
     }
 

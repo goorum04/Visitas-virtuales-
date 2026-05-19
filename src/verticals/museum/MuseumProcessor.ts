@@ -8,19 +8,18 @@ export class MuseumProcessor extends BaseProcessor {
     const result = await this.orchestrate3D();
     const outputs = [];
 
-    if (result.glbUrl) {
-      outputs.push(this.buildOutput('glb', result.glbUrl, 60_000, { type: 'exhibit_scene' }));
-      const base = result.glbUrl.replace('.glb', '');
-      outputs.push(this.buildOutput('json', `${base}_hotspots.json`, 8_000, {
-        type: 'hotspots', interactive: true,
-      }));
-      outputs.push(this.buildOutput('json', `${base}_info_panels.json`, 12_000, {
-        type: 'info_panels', languages: ['es', 'en', 'fr'],
-      }));
+    if (result.worldLabs) {
+      const wl = result.worldLabs;
+      if (wl.colliderGlbUrl)  outputs.push(this.buildOutput('glb', wl.colliderGlbUrl, 0, { type: 'exhibit_scene' }));
+      if (wl.splatUrl)        outputs.push(this.buildOutput('spz', wl.splatUrl, 0, { type: 'gaussian_splat' }));
+      if (wl.marbleViewerUrl) outputs.push(this.buildOutput('url', wl.marbleViewerUrl, 0, { type: 'viewer_url' }));
+      if (wl.thumbnailUrl)    outputs.push(this.buildOutput('jpg', wl.thumbnailUrl, 0, { type: 'thumbnail' }));
     }
-    if (result.audioUrl) {
-      outputs.push(this.buildOutput('mp3', result.audioUrl, 5_000_000, {
-        type: 'audio_guide', multilang: true,
+
+    if (result.audioBuffer) {
+      outputs.push(this.buildOutput('mp3', `pending_upload_${this.job.id}.mp3`, result.audioBuffer.length, {
+        type: 'audio_guide',
+        audioBuffer: result.audioBuffer.toString('base64'),
       }));
     }
 

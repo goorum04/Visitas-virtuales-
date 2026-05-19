@@ -4,134 +4,260 @@ import type { Vertical } from '../types/index.js';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ===== Tool definitions =====
+// ===== World Labs Marble =====
 
-const TOOLS: Anthropic.Tool[] = [
-  {
-    name: 'generate_3d_scene',
-    description: 'Generates an interactive 3D scene from an image using World Labs Marble API. Returns a GLB file URL.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        image_url: { type: 'string', description: 'URL of the input image' },
-        quality: { type: 'string', enum: ['draft', 'standard', 'high'], description: 'Generation quality' },
-        style_hints: { type: 'string', description: 'Additional style instructions' },
-      },
-      required: ['image_url'],
-    },
-  },
-  {
-    name: 'generate_3d_mesh',
-    description: 'Generates detailed 3D meshes from an image using FAL Hunyuan3D. Returns mesh file URLs.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        image_url: { type: 'string', description: 'URL of the input image' },
-        output_format: { type: 'string', enum: ['glb', 'obj', 'fbx'], description: 'Output mesh format' },
-        detail_level: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Level of mesh detail' },
-      },
-      required: ['image_url'],
-    },
-  },
-  {
-    name: 'generate_audio',
-    description: 'Generates ambient audio for a 3D scene using ElevenLabs. Returns an MP3 URL.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        scene_description: { type: 'string', description: 'Description of the space for audio generation' },
-        duration_seconds: { type: 'number', description: 'Length of audio in seconds' },
-        mood: { type: 'string', enum: ['calm', 'vibrant', 'professional', 'atmospheric'] },
-      },
-      required: ['scene_description'],
-    },
-  },
-];
-
-// ===== Tool executors =====
-
-async function executeGenerateScene(input: {
-  image_url: string;
-  quality?: string;
-  style_hints?: string;
-}): Promise<{ glb_url: string; scene_id: string }> {
-  if (!process.env.WORLD_LABS_API_KEY) {
-    // Dev mode: return mock URL
-    return { glb_url: `https://cdn.worldlabs.ai/mock/${Date.now()}.glb`, scene_id: `wl_${Date.now()}` };
-  }
-  const res = await axios.post(
-    'https://api.worldlabs.ai/v1/scenes/generate',
-    { image_url: input.image_url, quality: input.quality || 'standard', style: input.style_hints },
-    { headers: { Authorization: `Bearer ${process.env.WORLD_LABS_API_KEY}` }, timeout: 120_000 }
-  );
-  return { glb_url: res.data.glb_url, scene_id: res.data.id };
+export interface WorldLabsAssets {
+  colliderGlbUrl?: string;
+  splatUrl?: string;
+  thumbnailUrl?: string;
+  marbleViewerUrl?: string;
+  caption?: string;
 }
 
-async function executeGenerateMesh(input: {
-  image_url: string;
-  output_format?: string;
-  detail_level?: string;
-}): Promise<{ mesh_url: string; format: string }> {
-  if (!process.env.FAL_API_KEY) {
-    return { mesh_url: `https://fal.ai/mock/${Date.now()}.glb`, format: input.output_format || 'glb' };
-  }
-  const res = await axios.post(
-    'https://fal.run/fal-ai/hunyuan3d-v2',
-    { image_url: input.image_url, output_format: input.output_format || 'glb', detail: input.detail_level || 'high' },
-    { headers: { Authorization: `Key ${process.env.FAL_API_KEY}` }, timeout: 180_000 }
+async function generateWorldLabsScene(
+  imageUrl: string,
+  displayName: string,
+  textPrompt?: string
+): Promise<WorldLabsAssets> {
+  const key = process.env.WORLD_LABS_API_KEY;
+  if (!key) throw new Error('WORLD_LABS_API_KEY not set');
+
+  const BASE = 'https://api.worldlabs.ai/marble/v1';
+  const headers = { 'WLT-Api-Key': key, 'Content-Type': 'application/json' };
+
+  console.log('  [WorldLabs] Submitting generation...');
+  const { data: op } = await axios.post(
+    `${BASE}/worlds:generate`,
+    {
+      display_name: displayName,
+      model: 'marble-1.1',
+      world_prompt: {
+        type: 'image',
+        image_prompt: { source: 'uri', uri: imageUrl },
+        ...(textPrompt ? { text_prompt: textPrompt } : {}),
+      },
+    },
+    { headers, timeout: 15_000 }
   );
-  return { mesh_url: res.data.output?.mesh_url || res.data.url, format: input.output_format || 'glb' };
+
+  const operationId: string = op.operation_id;
+  console.log(`  [WorldLabs] operation_id: ${operationId} — polling every 15s (~5 min total)...`);
+
+  for (let i = 0; i < 40; i++) {
+    await sleep(15_000);
+    const { data: poll } = await axios.get(`${BASE}/operations/${operationId}`, {
+      headers: { 'WLT-Api-Key': key },
+      timeout: 10_000,
+    });
+
+    if (poll.error) throw new Error(`WorldLabs error: ${JSON.stringify(poll.error)}`);
+
+    if (poll.done && poll.response) {
+      const r = poll.response;
+      console.log('  [WorldLabs] Done!');
+      return {
+        colliderGlbUrl: r.assets?.mesh?.collider_mesh_url,
+        splatUrl: r.assets?.splats?.spz_urls?.full_res,
+        thumbnailUrl: r.assets?.imagery?.thumbnail_url ?? r.assets?.thumbnail_url,
+        marbleViewerUrl: r.world_marble_url,
+        caption: r.assets?.caption,
+      };
+    }
+
+    const status = poll.metadata?.progress?.status ?? 'processing';
+    console.log(`  [WorldLabs] ${status} (${(i + 1) * 15}s elapsed)`);
+  }
+
+  throw new Error('WorldLabs: timed out after 10 minutes');
 }
 
-async function executeGenerateAudio(input: {
-  scene_description: string;
-  duration_seconds?: number;
-  mood?: string;
-}): Promise<{ audio_url: string; duration: number }> {
-  // ElevenLabs sound effects / ambient generation
-  if (!process.env.ELEVENLABS_API_KEY) {
-    return { audio_url: `https://mock.cdn/ambient_${Date.now()}.mp3`, duration: input.duration_seconds || 120 };
+// ===== FAL Hunyuan3D v3 (queue-based) =====
+
+export interface FalMeshResult {
+  glbUrl: string;
+  fbxUrl?: string;
+  objUrl?: string;
+  thumbnailUrl?: string;
+  seed?: number;
+}
+
+async function generateFalMesh(
+  imageUrl: string,
+  opts?: { faceCount?: number; enablePbr?: boolean }
+): Promise<FalMeshResult> {
+  const key = process.env.FAL_API_KEY;
+  if (!key) throw new Error('FAL_API_KEY not set');
+
+  const MODEL = 'fal-ai/hunyuan3d-v3/image-to-3d';
+  const headers = { Authorization: `Key ${key}`, 'Content-Type': 'application/json' };
+
+  // 1. Submit to queue
+  console.log('  [FAL] Submitting Hunyuan3D-v3...');
+  const { data: job } = await axios.post(
+    `https://queue.fal.run/${MODEL}`,
+    {
+      input_image_url: imageUrl,
+      face_count: opts?.faceCount ?? 500_000,
+      enable_pbr: opts?.enablePbr ?? false,
+      generate_type: 'Normal',
+      polygon_type: 'triangle',
+    },
+    { headers, timeout: 15_000 }
+  );
+
+  const requestId: string = job.request_id;
+  console.log(`  [FAL] request_id: ${requestId} — polling...`);
+
+  // 2. Poll status
+  for (let i = 0; i < 60; i++) {
+    await sleep(5_000);
+    const { data: status } = await axios.get(
+      `https://queue.fal.run/${MODEL}/requests/${requestId}/status`,
+      { headers, timeout: 10_000 }
+    );
+
+    if (status.status === 'COMPLETED') break;
+    if (status.status === 'FAILED') throw new Error(`FAL job failed: ${JSON.stringify(status)}`);
+    console.log(`  [FAL] ${status.status} (${(i + 1) * 5}s elapsed)`);
   }
-  const res = await axios.post(
+
+  // 3. Fetch result
+  const { data: result } = await axios.get(
+    `https://queue.fal.run/${MODEL}/requests/${requestId}`,
+    { headers, timeout: 10_000 }
+  );
+
+  const glbUrl = result.model_glb?.url;
+  if (!glbUrl) throw new Error('FAL: no model_glb.url in response');
+  console.log(`  [FAL] GLB ready: ${glbUrl.substring(0, 60)}...`);
+
+  return {
+    glbUrl,
+    fbxUrl: result.model_urls?.fbx,
+    objUrl: result.model_urls?.obj,
+    thumbnailUrl: result.thumbnail?.url,
+    seed: result.seed,
+  };
+}
+
+// ===== ElevenLabs ambient audio =====
+
+async function generateAmbientAudio(description: string, durationSeconds = 22): Promise<Buffer> {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error('ELEVENLABS_API_KEY not set');
+
+  console.log('  [ElevenLabs] Generating ambient audio...');
+  const { data } = await axios.post(
     'https://api.elevenlabs.io/v1/sound-generation',
     {
-      text: `${input.mood || 'calm'} ambient sound for: ${input.scene_description}`,
-      duration_seconds: input.duration_seconds || 120,
+      text: description,
+      duration_seconds: Math.min(durationSeconds, 22), // ElevenLabs max is 22s
       prompt_influence: 0.3,
     },
     {
-      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY },
+      headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
       responseType: 'arraybuffer',
       timeout: 60_000,
     }
   );
-  // In production, upload this buffer to S3 and return the URL
-  return { audio_url: `https://storage/ambient_${Date.now()}.mp3`, duration: input.duration_seconds || 120 };
+
+  const buf = Buffer.from(data as ArrayBuffer);
+  console.log(`  [ElevenLabs] Audio ready: ${(buf.length / 1024).toFixed(0)} KB`);
+  return buf;
 }
+
+// ===== Claude tool definitions =====
+
+const TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'generate_3d_scene',
+    description:
+      'Generates an immersive, navigable 3D world from an image using World Labs Marble. ' +
+      'Best for spaces: rooms, buildings, outdoor environments. Takes ~5 minutes. ' +
+      'Returns a collider GLB, Gaussian splat (SPZ), and shareable viewer URL.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        image_url: { type: 'string', description: 'Public HTTPS URL of the input image' },
+        display_name: { type: 'string', description: 'Name for the generated world' },
+        text_prompt: { type: 'string', description: 'Optional description to guide generation' },
+      },
+      required: ['image_url', 'display_name'],
+    },
+  },
+  {
+    name: 'generate_3d_mesh',
+    description:
+      'Generates a precise polygon 3D mesh (GLB/FBX) from an image using FAL Hunyuan3D-v3. ' +
+      'Best for objects, products, and assets. Takes 30-120 seconds. ' +
+      'Returns GLB, FBX, OBJ URLs.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        image_url: { type: 'string', description: 'Public HTTPS URL of the input image' },
+        face_count: { type: 'number', description: 'Polygon count (40000–1500000, default 500000)' },
+        enable_pbr: { type: 'boolean', description: 'Generate PBR materials (higher quality, 3x cost)' },
+      },
+      required: ['image_url'],
+    },
+  },
+  {
+    name: 'generate_ambient_audio',
+    description:
+      'Generates short ambient audio (up to 22 seconds) using ElevenLabs sound generation. ' +
+      'Use for adding immersive sound to a 3D scene.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        description: { type: 'string', description: 'Describe the ambient sound (e.g. "quiet living room with distant traffic")' },
+        duration_seconds: { type: 'number', description: 'Duration in seconds (max 22)' },
+      },
+      required: ['description'],
+    },
+  },
+];
+
+// ===== Tool dispatcher =====
 
 async function dispatchTool(name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case 'generate_3d_scene':
-      return executeGenerateScene(input as Parameters<typeof executeGenerateScene>[0]);
+      return generateWorldLabsScene(
+        input.image_url as string,
+        input.display_name as string,
+        input.text_prompt as string | undefined
+      );
+
     case 'generate_3d_mesh':
-      return executeGenerateMesh(input as Parameters<typeof executeGenerateMesh>[0]);
-    case 'generate_audio':
-      return executeGenerateAudio(input as Parameters<typeof executeGenerateAudio>[0]);
+      return generateFalMesh(input.image_url as string, {
+        faceCount: input.face_count as number | undefined,
+        enablePbr: input.enable_pbr as boolean | undefined,
+      });
+
+    case 'generate_ambient_audio': {
+      const buf = await generateAmbientAudio(
+        input.description as string,
+        input.duration_seconds as number | undefined
+      );
+      return { audio_base64: buf.toString('base64'), size_bytes: buf.length };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
 }
 
-// ===== Main orchestrator =====
+// ===== Exported result type =====
 
 export interface OrchestrationResult {
   analysis: string;
-  glbUrl?: string;
-  meshUrl?: string;
-  audioUrl?: string;
-  sceneId?: string;
-  rawOutputs: Record<string, unknown>[];
+  worldLabs?: WorldLabsAssets;
+  fal?: FalMeshResult;
+  audioBuffer?: Buffer;
+  rawOutputs: Array<{ tool: string; result: unknown }>;
 }
+
+// ===== Main agentic loop =====
 
 export async function orchestrate(
   vertical: Vertical,
@@ -146,20 +272,21 @@ export async function orchestrate(
 Image URL: ${imageUrl}
 Vertical: ${vertical}
 
-Please analyze the image and generate the appropriate 3D content using the available tools.
-Always call generate_3d_scene first, then generate_3d_mesh for high quality output.
-For real_estate, museum, and events verticals also generate ambient audio.`,
+Choose tools based on the vertical:
+- real_estate, museum, events → generate_3d_scene (World Labs: immersive walkthrough) + generate_ambient_audio
+- gamedev, retail, architecture → generate_3d_mesh (FAL: precise polygon mesh)
+- retail may also benefit from generate_3d_mesh with enable_pbr: true
+
+Analyze the image content first, then call the appropriate tool(s).`,
     },
   ];
 
-  const rawOutputs: Record<string, unknown>[] = [];
+  const rawOutputs: Array<{ tool: string; result: unknown }> = [];
   let analysis = '';
-  let glbUrl: string | undefined;
-  let meshUrl: string | undefined;
-  let audioUrl: string | undefined;
-  let sceneId: string | undefined;
+  let worldLabs: WorldLabsAssets | undefined;
+  let fal: FalMeshResult | undefined;
+  let audioBuffer: Buffer | undefined;
 
-  // Agentic loop: let Claude drive until it stops using tools
   while (true) {
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-7',
@@ -171,39 +298,36 @@ For real_estate, museum, and events verticals also generate ambient audio.`,
     messages.push({ role: 'assistant', content: response.content });
 
     const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-    const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
+    const texts = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
+    if (texts.length) analysis += texts.map((b) => b.text).join('\n');
+    if (!toolUses.length || response.stop_reason === 'end_turn') break;
 
-    if (textBlocks.length > 0) {
-      analysis += textBlocks.map((b) => b.text).join('\n');
-    }
-
-    if (toolUses.length === 0 || response.stop_reason === 'end_turn') break;
-
-    // Execute all tool calls
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUses) {
-      console.log(`  [Claude] calling ${toolUse.name}`);
+    for (const tu of toolUses) {
+      console.log(`  [Claude] → ${tu.name}`);
       try {
-        const result = await dispatchTool(toolUse.name, toolUse.input as Record<string, unknown>);
-        rawOutputs.push({ tool: toolUse.name, result });
+        const result = await dispatchTool(tu.name, tu.input as Record<string, unknown>);
+        rawOutputs.push({ tool: tu.name, result });
 
-        // Extract key URLs
-        const r = result as Record<string, unknown>;
-        if (r.glb_url) glbUrl = r.glb_url as string;
-        if (r.scene_id) sceneId = r.scene_id as string;
-        if (r.mesh_url) meshUrl = r.mesh_url as string;
-        if (r.audio_url) audioUrl = r.audio_url as string;
+        if (tu.name === 'generate_3d_scene') worldLabs = result as WorldLabsAssets;
+        if (tu.name === 'generate_3d_mesh') fal = result as FalMeshResult;
+        if (tu.name === 'generate_ambient_audio') {
+          const r = result as { audio_base64: string };
+          audioBuffer = Buffer.from(r.audio_base64, 'base64');
+        }
 
         toolResults.push({
           type: 'tool_result',
-          tool_use_id: toolUse.id,
+          tool_use_id: tu.id,
           content: JSON.stringify(result),
         });
       } catch (err) {
+        const msg = (err as Error).message;
+        console.error(`  [${tu.name}] failed: ${msg}`);
         toolResults.push({
           type: 'tool_result',
-          tool_use_id: toolUse.id,
-          content: `Error: ${(err as Error).message}`,
+          tool_use_id: tu.id,
+          content: `Error: ${msg}`,
           is_error: true,
         });
       }
@@ -212,5 +336,9 @@ For real_estate, museum, and events verticals also generate ambient audio.`,
     messages.push({ role: 'user', content: toolResults });
   }
 
-  return { analysis, glbUrl, meshUrl, audioUrl, sceneId, rawOutputs };
+  return { analysis, worldLabs, fal, audioBuffer, rawOutputs };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }

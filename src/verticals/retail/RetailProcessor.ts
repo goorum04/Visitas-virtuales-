@@ -8,21 +8,16 @@ export class RetailProcessor extends BaseProcessor {
     const result = await this.orchestrate3D();
     const outputs = [];
 
-    if (result.glbUrl) {
-      const base = result.glbUrl.replace('.glb', '');
-      outputs.push(this.buildOutput('glb', result.glbUrl, 25_000, { type: 'product_model' }));
-      outputs.push(this.buildOutput('webp_360', `${base}_360.webp`, 1_500_000, {
-        type: '360_rotation', frames: 36, fps: 30,
+    if (result.fal) {
+      const f = result.fal;
+      outputs.push(this.buildOutput('glb', f.glbUrl, 0, {
+        type: 'product_model',
+        source: 'fal_hunyuan3d',
+        pbr: true,
       }));
-      outputs.push(this.buildOutput('json', `${base}_tags.json`, 4_000, {
-        type: 'product_tags', shopifyCompatible: true, woocommerceCompatible: true,
-      }));
-      outputs.push(this.buildOutput('json', `${base}_seo.json`, 2_000, {
-        type: 'seo_metadata', schema: 'Product', jsonLd: true,
-      }));
-    }
-    if (result.meshUrl && result.meshUrl !== result.glbUrl) {
-      outputs.push(this.buildOutput('glb', result.meshUrl, 20_000, { type: 'detailed_mesh' }));
+      if (f.fbxUrl) outputs.push(this.buildOutput('fbx', f.fbxUrl, 0, { type: 'fbx_export' }));
+      if (f.objUrl) outputs.push(this.buildOutput('obj', f.objUrl, 0, { type: 'obj_export', shopifyCompatible: true }));
+      if (f.thumbnailUrl) outputs.push(this.buildOutput('jpg', f.thumbnailUrl, 0, { type: 'thumbnail' }));
     }
 
     return {
