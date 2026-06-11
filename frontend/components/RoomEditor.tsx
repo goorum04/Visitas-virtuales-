@@ -433,7 +433,6 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     controls.maxPolarAngle = Math.PI / 2 + 0.1; controls.target.set(0, 0.8, 0);
     controlsRef.current = controls;
 
-    // Lights — warm daylight from right window
     scene.add(new THREE.AmbientLight(0xfff4e0, 0.55));
     const winLight = new THREE.DirectionalLight(0xfff8ee, 4.2);
     winLight.position.set(7, 5, 1); winLight.target.position.set(0, 0, 0);
@@ -447,7 +446,8 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     ceilLight.position.set(0, 2.88, 0.4);
     ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(512, 512); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
-    scene.add(Object.assign(new THREE.DirectionalLight(0xd8e8ff, 0.4), { position: new THREE.Vector3(-3, 3, 5) }));
+    const fill = new THREE.DirectionalLight(0xd8e8ff, 0.4);
+    fill.position.set(-3, 3, 5); scene.add(fill);
 
     const RW = 7, RH = 3, RD = 6.5;
     const plasterN = makePlasterNormal();
@@ -471,24 +471,23 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), ceilMat);
     ceil.rotation.x = Math.PI / 2; ceil.position.y = RH; scene.add(ceil);
 
-    // Ceiling fixture
     const fixtM = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.5, metalness: 0.25 });
-    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.055, 16), fixtM), { position: new THREE.Vector3(0, RH - 0.028, 0.4) }));
+    const fixt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.055, 16), fixtM);
+    fixt.position.set(0, RH - 0.028, 0.4); scene.add(fixt);
     const bulbGlob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8),
       new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.0, roughness: 0.04 }));
     bulbGlob.position.set(0, RH - 0.1, 0.4); scene.add(bulbGlob);
 
-    // Per-wall meshes
     const addWall = (w: number, h: number, mat: THREE.MeshStandardMaterial, pos: [number, number, number], ry: number, id: WallId) => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(...pos); mesh.rotation.y = ry; mesh.receiveShadow = true;
       scene.add(mesh); wallMeshToId.current.set(mesh, id);
     };
-    addWall(RW, RH, backMat,  [0, RH / 2, -RD / 2], 0,          'back');
+    addWall(RW, RH, backMat,  [0, RH / 2, -RD / 2], 0,           'back');
     addWall(RD, RH, leftMat,  [-RW / 2, RH / 2, 0], Math.PI / 2,  'left');
     addWall(RD, RH, rightMat, [RW / 2,  RH / 2, 0], -Math.PI / 2, 'right');
 
-    // ── Neoclassical wall panel moldings on back wall ───────────────────────
+    // Neoclassical panel moldings
     const moldM = new THREE.MeshStandardMaterial({ color: 0xfaf8f4, roughness: 0.48, envMapIntensity: 0.55 });
     const addPanelFrame = (cx: number, cy: number, pw: number, ph: number) => {
       const z = -RD / 2 + 0.026, th = 0.03, d = 0.016;
@@ -505,7 +504,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     addPanelFrame( 0.0, 1.28, 1.90, 1.95);
     addPanelFrame( 2.3, 1.28, 1.90, 1.95);
 
-    // ── Landscape painting on center back wall panel ────────────────────────
+    // Landscape painting
     const artTex = makeArtTex();
     const artFrameM = new THREE.MeshStandardMaterial({ color: 0xf6f2ec, roughness: 0.52, envMapIntensity: 0.4 });
     const artFrame = new THREE.Mesh(new THREE.BoxGeometry(1.96, 1.24, 0.04), artFrameM);
@@ -514,27 +513,23 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
       new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.88 }));
     artMesh.position.set(0, 2.06, -RD / 2 + 0.08); scene.add(artMesh);
 
-    // ── Right wall window + curtains ────────────────────────────────────────
+    // Right wall window
     const rWinGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.1),
       new THREE.MeshStandardMaterial({ color: 0xc4dcf4, emissive: 0x98c4e0, emissiveIntensity: 2.2, transparent: true, opacity: 0.48, roughness: 0, metalness: 0.02 }));
     rWinGlass.rotation.y = -Math.PI / 2;
     rWinGlass.position.set(RW / 2 - 0.07, 1.72, 0.8); scene.add(rWinGlass);
-
     const rWinFrameM = new THREE.MeshStandardMaterial({ color: 0xf0ece5, roughness: 0.4, metalness: 0.06 });
     const rWinFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.18, 2.88), rWinFrameM);
     rWinFrame.position.set(RW / 2 - 0.04, 1.72, 0.8); scene.add(rWinFrame);
-    // Cross bars
     [0, 1].forEach(i => {
       const b = new THREE.Mesh(i === 0 ? new THREE.BoxGeometry(0.04, 2.10, 0.04) : new THREE.BoxGeometry(0.04, 0.04, 2.80), rWinFrameM);
       b.position.set(RW / 2 - 0.05, 1.72, 0.8); scene.add(b);
     });
 
-    // Curtain rod
+    // Curtain rod + camel curtains
     const rodM = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.18, metalness: 0.9 });
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 8), rodM);
     rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
-
-    // Camel linen curtains
     const curtM = new THREE.MeshStandardMaterial({ color: 0xb89870, roughness: 0.95, side: THREE.FrontSide });
     [[2.3], [-0.75]].forEach(([cz]) => {
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.09, RH - 0.08, 1.3), curtM);
@@ -567,17 +562,17 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const boxHelper = new THREE.BoxHelper(placeholder, 0x00d4ff);
     boxHelper.visible = false; scene.add(boxHelper); boxHelperRef.current = boxHelper;
 
-    // ── Pre-loaded reference scene (matching the neoclassical image) ────────
+    // Pre-loaded neoclassical scene
     const refScene: Array<{ build: () => THREE.Group; id: string; x: number; z: number; ry: number }> = [
-      { build: () => sofa(2.5, 0xe0dac8),           id: 'sofa3',     x:  1.3,  z:  1.6,  ry: Math.PI },
-      { build: () => armchair(0xc0681c),             id: 'armchair',  x: -0.85, z:  0.38, ry: Math.PI * 0.58 },
-      { build: () => armchair(0xc0681c),             id: 'armchair',  x:  0.5,  z:  0.22, ry: Math.PI * 0.82 },
-      { build: () => coffeeTable(0xf0ebe0, 0xd4c080),id: 'coffee',    x:  0.4,  z:  1.14, ry: 0 },
-      { build: () => sideboard(0xc8a870, 0xc0a040),  id: 'sideboard', x: -3.05, z: -1.2,  ry: Math.PI / 2 },
-      { build: () => arcLamp(0xb8a050, 0xf0ece6),    id: 'arclamp',   x:  2.9,  z:  0.5,  ry: -Math.PI / 4 },
-      { build: () => plant(0x2e5a28),                id: 'plant',     x: -2.6,  z:  1.4,  ry: 0 },
-      { build: () => stool(0x151515),                id: 'stool',     x: -0.25, z:  2.35, ry: 0 },
-      { build: () => stool(0x151515),                id: 'stool',     x:  0.6,  z:  2.55, ry: 0.8 },
+      { build: () => sofa(2.5, 0xe0dac8),            id: 'sofa3',     x:  1.3,  z:  1.6,  ry: Math.PI },
+      { build: () => armchair(0xc0681c),              id: 'armchair',  x: -0.85, z:  0.38, ry: Math.PI * 0.58 },
+      { build: () => armchair(0xc0681c),              id: 'armchair',  x:  0.5,  z:  0.22, ry: Math.PI * 0.82 },
+      { build: () => coffeeTable(0xf0ebe0, 0xd4c080), id: 'coffee',    x:  0.4,  z:  1.14, ry: 0 },
+      { build: () => sideboard(0xc8a870, 0xc0a040),   id: 'sideboard', x: -3.05, z: -1.2,  ry: Math.PI / 2 },
+      { build: () => arcLamp(0xb8a050, 0xf0ece6),     id: 'arclamp',   x:  2.9,  z:  0.5,  ry: -Math.PI / 4 },
+      { build: () => plant(0x2e5a28),                 id: 'plant',     x: -2.6,  z:  1.4,  ry: 0 },
+      { build: () => stool(0x151515),                 id: 'stool',     x: -0.25, z:  2.35, ry: 0 },
+      { build: () => stool(0x151515),                 id: 'stool',     x:  0.6,  z:  2.55, ry: 0.8 },
     ];
     const initPlaced: PlacedItem[] = [];
     refScene.forEach(({ build, id, x, z, ry }, i) => {
@@ -590,7 +585,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     });
     placedRef.current = initPlaced; setPlaced([...initPlaced]);
 
-    // ── Pointer events ──────────────────────────────────────────────────────
+    // Pointer events
     const raycaster = new THREE.Raycaster();
     const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     let potDrag: { uid: string; group: THREE.Group } | null = null;
@@ -646,7 +641,8 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
         canvas.releasePointerCapture(e.pointerId); potDrag = null; isDrag = false;
       } else if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
         raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-        const hits = raycaster.intersectObjects([...wallMeshToId.current.keys()]);
+        const wallMeshes = Array.from(wallMeshToId.current.keys());
+        const hits = raycaster.intersectObjects(wallMeshes);
         if (hits.length) {
           const wId = wallMeshToId.current.get(hits[0].object as THREE.Mesh);
           if (wId) { setSelectedWall(wId); setActiveTab('walls'); }
@@ -667,10 +663,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     };
     window.addEventListener('resize', onResize);
 
-    const animate = () => {
-      rafRef.current = requestAnimationFrame(animate); controls.update();
-      renderer.render(scene, camera);
-    };
+    const animate = () => { rafRef.current = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
     animate();
 
     return () => {
