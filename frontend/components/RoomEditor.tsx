@@ -6,16 +6,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 type WallId = 'back' | 'left' | 'right' | 'ceiling';
-
-interface FurnitureItem {
-  id: string; name: string; category: string; emoji: string;
-  primary: number; secondary?: number;
-}
+interface FurnitureItem { id: string; name: string; category: string; emoji: string; primary: number; secondary?: number; }
 interface PlacedItem { uid: string; item: FurnitureItem; group: THREE.Group; }
 
 const WALL_COLORS = [
-  { name: 'Blanco roto',    hex: '#f2ece3' },
-  { name: 'Crema',          hex: '#ede0cb' },
+  { name: 'Blanco puro',    hex: '#f7f4f0' },
+  { name: 'Crema cálida',   hex: '#ede0cb' },
   { name: 'Gris perla',     hex: '#d8d5d0' },
   { name: 'Azul suave',     hex: '#c4d4e6' },
   { name: 'Verde sage',     hex: '#c3d2be' },
@@ -29,23 +25,26 @@ const WALL_COLORS = [
 const FLOOR_TINTS = [
   { name: 'Natural',       hex: '#ffffff' },
   { name: 'Roble cálido',  hex: '#e8d4a0' },
-  { name: 'Nogal',         hex: '#7a4f28' },
+  { name: 'Nogal',         hex: '#6b3c18' },
   { name: 'Gris lavado',   hex: '#c0bdb6' },
   { name: 'Baldosa clara', hex: '#f0edea' },
   { name: 'Cemento',       hex: '#8a8c8e' },
 ];
 
 const CATALOG: FurnitureItem[] = [
-  { id: 'sofa3',    name: 'Sofá 3 plazas',  category: 'Sala',    emoji: '🛋️', primary: 0x7a6245 },
+  { id: 'sofa3',    name: 'Sofá 3 plazas',  category: 'Sala',    emoji: '🛋️', primary: 0xe0dac8 },
   { id: 'sofa2',    name: 'Sofá 2 plazas',  category: 'Sala',    emoji: '🛋️', primary: 0x4e6070 },
-  { id: 'armchair', name: 'Sillón',         category: 'Sala',    emoji: '🪑',  primary: 0x8b6e44 },
-  { id: 'coffee',   name: 'Mesa de centro', category: 'Sala',    emoji: '🪵',  primary: 0x5a3820, secondary: 0x909090 },
+  { id: 'armchair', name: 'Sillón',         category: 'Sala',    emoji: '🪑',  primary: 0xc0681c },
+  { id: 'coffee',   name: 'Mesa de centro', category: 'Sala',    emoji: '🪵',  primary: 0xf0ebe0, secondary: 0xd4c080 },
+  { id: 'sideboard',name: 'Aparador',       category: 'Sala',    emoji: '🪵',  primary: 0xc8a870, secondary: 0xc0a040 },
   { id: 'dining',   name: 'Mesa comedor',   category: 'Comedor', emoji: '🍽️', primary: 0x6b4828 },
   { id: 'chair',    name: 'Silla comedor',  category: 'Comedor', emoji: '🪑',  primary: 0x3a3a38 },
   { id: 'bed',      name: 'Cama doble',     category: 'Dormit.', emoji: '🛏️', primary: 0xa89070, secondary: 0xd8d0c8 },
   { id: 'wardrobe', name: 'Armario',        category: 'Dormit.', emoji: '🗄️', primary: 0xc0a882 },
+  { id: 'arclamp',  name: 'Lámpara arco',   category: 'Decor',   emoji: '💡',  primary: 0xb8a050, secondary: 0xf0ece6 },
   { id: 'lamp',     name: 'Lámpara pie',    category: 'Decor',   emoji: '💡',  primary: 0xb89030, secondary: 0xe8e4d8 },
-  { id: 'plant',    name: 'Planta grande',  category: 'Decor',   emoji: '🌿',  primary: 0x2e6a34, secondary: 0x5a3018 },
+  { id: 'plant',    name: 'Planta grande',  category: 'Decor',   emoji: '🌿',  primary: 0x2e6a34 },
+  { id: 'stool',    name: 'Taburete',       category: 'Decor',   emoji: '🪑',  primary: 0x151515 },
   { id: 'tv',       name: 'TV + mueble',    category: 'Electr.', emoji: '📺',  primary: 0x181818, secondary: 0x4a4030 },
   { id: 'shelf',    name: 'Estantería',     category: 'Electr.', emoji: '📚',  primary: 0x7a5a30 },
 ];
@@ -53,20 +52,20 @@ const CATALOG: FurnitureItem[] = [
 const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Dormit.', 'Electr.', 'Decor'];
 const WALL_LABELS: Record<WallId, string> = { back: 'Fondo', left: 'Izquierda', right: 'Derecha', ceiling: 'Techo' };
 
-// ── Textures ────────────────────────────────────────────────────────────────
+// ── Textures ─────────────────────────────────────────────────────────────────
 
 function makeWoodTex(): THREE.CanvasTexture {
-  const S = 1024;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const S = 1024, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
   const cx = cv.getContext('2d')!;
   const PW = S / 5, PH = S / 4;
   for (let row = 0; row < 5; row++) {
     for (let col = -1; col < 7; col++) {
       const shift = (row % 2) * (PW / 2);
       const x = col * PW + shift, y = row * PH;
-      cx.fillStyle = `hsl(26,52%,${36 + Math.random() * 16}%)`;
+      cx.fillStyle = `hsl(26,50%,${32 + Math.random() * 14}%)`;
       cx.fillRect(x + 1, y + 1, PW - 2, PH - 2);
-      cx.save(); cx.globalAlpha = 0.06; cx.strokeStyle = '#000'; cx.lineWidth = 0.9;
+      cx.save(); cx.globalAlpha = 0.07; cx.strokeStyle = '#000'; cx.lineWidth = 0.9;
       for (let g = 1; g < 10; g++) {
         const gy = y + (g / 10) * PH;
         cx.beginPath();
@@ -75,52 +74,71 @@ function makeWoodTex(): THREE.CanvasTexture {
         cx.stroke();
       }
       cx.restore();
-      cx.fillStyle = 'rgba(0,0,0,0.22)';
+      cx.fillStyle = 'rgba(0,0,0,0.25)';
       cx.fillRect(x, y, 1.5, PH); cx.fillRect(x, y, PW, 1.5);
     }
   }
   const t = new THREE.CanvasTexture(cv);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2.5, 1.8);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
 function makePlasterNormal(): THREE.CanvasTexture {
-  const S = 256;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const S = 256, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
   const cx = cv.getContext('2d')!; cx.fillStyle = '#8080ff'; cx.fillRect(0, 0, S, S);
   const id = cx.getImageData(0, 0, S, S);
   for (let i = 0; i < id.data.length; i += 4) {
-    id.data[i]   = 128 + (Math.random() - 0.5) * 18;
-    id.data[i+1] = 128 + (Math.random() - 0.5) * 18;
-    id.data[i+2] = 255; id.data[i+3] = 255;
+    id.data[i] = 128 + (Math.random() - 0.5) * 16;
+    id.data[i + 1] = 128 + (Math.random() - 0.5) * 16;
+    id.data[i + 2] = 255; id.data[i + 3] = 255;
   }
   cx.putImageData(id, 0, 0);
   const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4);
-  return t;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4); return t;
 }
 
-// ── Material helper ─────────────────────────────────────────────────────────
+function makeArtTex(): THREE.CanvasTexture {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 300;
+  const cx = cv.getContext('2d')!;
+  const sky = cx.createLinearGradient(0, 0, 0, 140);
+  sky.addColorStop(0, '#d0c8b8'); sky.addColorStop(1, '#c4bba8');
+  cx.fillStyle = sky; cx.fillRect(0, 0, 512, 140);
+  const field = cx.createLinearGradient(0, 140, 0, 300);
+  field.addColorStop(0, '#c8a048'); field.addColorStop(0.45, '#9a7028'); field.addColorStop(1, '#5e3c18');
+  cx.fillStyle = field; cx.fillRect(0, 140, 512, 160);
+  for (let i = 0; i < 420; i++) {
+    const gx = Math.random() * 512, gy = 140 + Math.random() * 110, r = 1 + Math.random() * 9;
+    cx.fillStyle = `rgba(${200 + Math.random() * 55},${140 + Math.random() * 50},${30 + Math.random() * 40},${0.2 + Math.random() * 0.5})`;
+    cx.beginPath(); cx.arc(gx, gy, r, 0, Math.PI * 2); cx.fill();
+  }
+  for (let i = 0; i < 35; i++) {
+    cx.fillStyle = `rgba(215,208,194,${0.15 + Math.random() * 0.25})`;
+    cx.fillRect(Math.random() * 512, Math.random() * 130, 50 + Math.random() * 100, 5 + Math.random() * 16);
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+// ── Materials ─────────────────────────────────────────────────────────────────
 
 function stdMat(color: number, rough: number, metal = 0, envI = 0.5) {
   return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: envI });
 }
 
-// ── Furniture builders ──────────────────────────────────────────────────────
+// ── Furniture ─────────────────────────────────────────────────────────────────
 
 function sofa(w: number, col: number): THREE.Group {
-  const g = new THREE.Group(); const f = stdMat(col, 0.9);
+  const g = new THREE.Group(), f = stdMat(col, 0.88);
   const box = (gx: number, gy: number, gz: number, sx: number, sy: number, sz: number, m = f) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m);
     mesh.position.set(gx, gy, gz); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
   };
   box(0, 0.21, 0, w, 0.42, 0.80);
   box(0, 0.60, -0.31, w, 0.56, 0.18);
-  box(-(w/2+0.09), 0.27, 0, 0.18, 0.52, 0.80);
-  box( (w/2+0.09), 0.27, 0, 0.18, 0.52, 0.80);
-  const legM = stdMat(0x1e1008, 0.4, 0.1);
-  [[-w/2+0.12,0.35],[-w/2+0.12,-0.34],[w/2-0.12,0.35],[w/2-0.12,-0.34]].forEach(([lx,lz]) => {
+  box(-(w / 2 + 0.09), 0.27, 0, 0.18, 0.52, 0.80);
+  box((w / 2 + 0.09), 0.27, 0, 0.18, 0.52, 0.80);
+  const legM = stdMat(0x2a1a08, 0.4, 0.1);
+  [[-w / 2 + 0.12, 0.35], [-w / 2 + 0.12, -0.34], [w / 2 - 0.12, 0.35], [w / 2 - 0.12, -0.34]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.1, 7), legM);
     leg.position.set(lx, -0.04, lz); g.add(leg);
   });
@@ -128,24 +146,108 @@ function sofa(w: number, col: number): THREE.Group {
 }
 
 function armchair(col: number): THREE.Group {
-  const g = new THREE.Group(); const f = stdMat(col, 0.9);
+  const g = new THREE.Group(), f = stdMat(col, 0.88);
   const box = (gx: number, gy: number, gz: number, sx: number, sy: number, sz: number) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), f);
     m.position.set(gx, gy, gz); m.castShadow = true; g.add(m);
   };
-  box(0, 0.22, 0, 0.84, 0.42, 0.80); box(0, 0.62, -0.31, 0.84, 0.58, 0.18);
-  box(-0.51, 0.26, 0, 0.18, 0.48, 0.80); box(0.51, 0.26, 0, 0.18, 0.48, 0.80);
+  box(0, 0.22, 0, 0.84, 0.44, 0.82);
+  box(0, 0.64, -0.32, 0.84, 0.60, 0.18);
+  box(-0.51, 0.27, 0, 0.18, 0.50, 0.82);
+  box(0.51, 0.27, 0, 0.18, 0.50, 0.82);
   return g;
 }
 
-function coffeeTable(col: number, metalCol: number): THREE.Group {
+function coffeeTable(col: number, legCol: number): THREE.Group {
   const g = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.055, 0.58), stdMat(col, 0.6));
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.06, 0.60), stdMat(col, 0.55, 0, 0.4));
   top.position.y = 0.44; top.castShadow = true; top.receiveShadow = true; g.add(top);
-  const legM = stdMat(metalCol, 0.25, 0.75, 0.85);
-  [[-0.46,0.25],[-0.46,-0.23],[0.46,0.25],[0.46,-0.23]].forEach(([lx,lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.018, 0.44, 8), legM);
+  const legM = stdMat(legCol, 0.25, 0.6, 0.8);
+  [[-0.48, 0.26], [-0.48, -0.24], [0.48, 0.26], [0.48, -0.24]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.018, 0.44, 8), legM);
     leg.position.set(lx, 0.22, lz); g.add(leg);
+  });
+  return g;
+}
+
+function sideboard(col: number, handleCol: number): THREE.Group {
+  const g = new THREE.Group(), wood = stdMat(col, 0.65);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.52, 0.42), wood);
+  body.position.y = 0.56; body.castShadow = true; body.receiveShadow = true; g.add(body);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.69, 0.04, 0.46), stdMat(col, 0.58));
+  top.position.y = 0.84; top.castShadow = true; g.add(top);
+  const legM = stdMat(Math.round(col * 0.85), 0.55);
+  [[-0.75, 0.18], [-0.75, -0.18], [0.75, 0.18], [0.75, -0.18]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.27, 0.04), legM);
+    leg.position.set(lx, 0.135, lz); g.add(leg);
+  });
+  const hM = stdMat(handleCol, 0.22, 0.75, 1.1);
+  [-0.54, 0, 0.54].forEach(dx => {
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.012, 0.012), hM);
+    handle.position.set(dx, 0.56, 0.225); g.add(handle);
+  });
+  const divM = stdMat(Math.round(col * 0.88), 0.7);
+  [-0.55, 0.55].forEach(dx => {
+    const div = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.50, 0.01), divM);
+    div.position.set(dx, 0.56, 0.218); g.add(div);
+  });
+  return g;
+}
+
+function stool(col: number): THREE.Group {
+  const g = new THREE.Group(), m = stdMat(col, 0.32, 0.1);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 16), m);
+  top.position.y = 0.43; top.castShadow = true; g.add(top);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.012, 0.43, 6), m);
+    leg.position.set(Math.cos(a) * 0.14, 0.215, Math.sin(a) * 0.14);
+    leg.rotation.z = -Math.cos(a) * 0.17; leg.rotation.x = -Math.sin(a) * 0.17;
+    leg.castShadow = true; g.add(leg);
+  }
+  return g;
+}
+
+function arcLamp(col: number, shadeCol: number): THREE.Group {
+  const g = new THREE.Group(), metal = stdMat(col, 0.22, 0.78, 1.1);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.27, 0.065, 16), metal);
+  base.position.y = 0.033; g.add(base);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.65, 8), metal);
+  pole.position.set(0, 0.86, 0); pole.castShadow = true; g.add(pole);
+  const arc = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 1.0, 8), metal);
+  arc.position.set(0.38, 1.80, 0); arc.rotation.z = -0.44; arc.castShadow = true; g.add(arc);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.22, 20, 1, true), stdMat(shadeCol, 0.9));
+  shade.position.set(0.82, 2.26, 0); shade.rotation.x = Math.PI; g.add(shade);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 2.8, roughness: 0.04 }));
+  bulb.position.set(0.82, 2.17, 0); g.add(bulb);
+  return g;
+}
+
+function floorLamp(col: number, shadeCol: number): THREE.Group {
+  const g = new THREE.Group(), metal = stdMat(col, 0.3, 0.65, 0.9);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.06, 16), metal);
+  base.position.y = 0.03; g.add(base);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.55, 8), metal);
+  pole.position.y = 0.82; pole.castShadow = true; g.add(pole);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.38, 16, 1, true), stdMat(shadeCol, 0.85));
+  shade.position.y = 1.72; shade.rotation.x = Math.PI; g.add(shade);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 2.5, roughness: 0.05 }));
+  bulb.position.y = 1.62; g.add(bulb);
+  return g;
+}
+
+function plant(leafCol: number): THREE.Group {
+  const g = new THREE.Group();
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.17, 0.36, 14), stdMat(0x9a6042, 0.82));
+  pot.position.y = 0.18; pot.castShadow = true; pot.receiveShadow = true; g.add(pot);
+  const soil = new THREE.Mesh(new THREE.CircleGeometry(0.21, 14), stdMat(0x3a2010, 0.95));
+  soil.rotation.x = -Math.PI / 2; soil.position.y = 0.37; g.add(soil);
+  const leafM = stdMat(leafCol, 0.9);
+  [{ r: 0.40, h: 0.52, y: 0.70 }, { r: 0.32, h: 0.48, y: 1.06 }, { r: 0.23, h: 0.42, y: 1.40 }, { r: 0.14, h: 0.34, y: 1.68 }].forEach(({ r, h, y }) => {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 11), leafM);
+    c.position.y = y; c.castShadow = true; g.add(c);
   });
   return g;
 }
@@ -155,7 +257,7 @@ function diningTable(col: number): THREE.Group {
   const top = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.90), stdMat(col, 0.6));
   top.position.y = 0.75; top.castShadow = true; top.receiveShadow = true; g.add(top);
   const wM = stdMat(col, 0.65);
-  [[-0.82,0.38],[-0.82,-0.38],[0.82,0.38],[0.82,-0.38]].forEach(([lx,lz]) => {
+  [[-0.82, 0.38], [-0.82, -0.38], [0.82, 0.38], [0.82, -0.38]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.75, 0.06), wM);
     leg.position.set(lx, 0.375, lz); leg.castShadow = true; g.add(leg);
   });
@@ -163,12 +265,12 @@ function diningTable(col: number): THREE.Group {
 }
 
 function diningChair(col: number): THREE.Group {
-  const g = new THREE.Group(); const m = stdMat(col, 0.7);
+  const g = new THREE.Group(), m = stdMat(col, 0.7);
   const seat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.04, 0.44), m);
   seat.position.y = 0.46; seat.castShadow = true; g.add(seat);
   const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.52, 0.04), m);
   back.position.set(0, 0.72, -0.2); back.castShadow = true; g.add(back);
-  [[-0.2,0.2],[-0.2,-0.2],[0.2,0.2],[0.2,-0.2]].forEach(([lx,lz]) => {
+  [[-0.2, 0.2], [-0.2, -0.2], [0.2, 0.2], [0.2, -0.2]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.014, 0.46, 6), m);
     leg.position.set(lx, 0.23, lz); g.add(leg);
   });
@@ -176,7 +278,7 @@ function diningChair(col: number): THREE.Group {
 }
 
 function bed(col: number, pilCol: number): THREE.Group {
-  const g = new THREE.Group(); const frame = stdMat(col, 0.7);
+  const g = new THREE.Group(), frame = stdMat(col, 0.7);
   const base = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.26, 1.9), frame);
   base.position.y = 0.13; base.castShadow = true; base.receiveShadow = true; g.add(base);
   const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.2, 1.78), stdMat(0xf0ece6, 0.92));
@@ -206,53 +308,24 @@ function wardrobe(col: number): THREE.Group {
   return g;
 }
 
-function floorLamp(col: number, shadeCol: number): THREE.Group {
-  const g = new THREE.Group(); const metal = stdMat(col, 0.3, 0.65, 0.9);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.06, 16), metal);
-  base.position.y = 0.03; g.add(base);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.55, 8), metal);
-  pole.position.y = 0.82; pole.castShadow = true; g.add(pole);
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.38, 16, 1, true), stdMat(shadeCol, 0.85));
-  shade.position.y = 1.72; shade.rotation.x = Math.PI; g.add(shade);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 2.5, roughness: 0.05 }));
-  bulb.position.y = 1.62; g.add(bulb);
-  return g;
-}
-
-function plant(leafCol: number): THREE.Group {
-  const g = new THREE.Group();
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.17, 0.36, 14), stdMat(0x9a6042, 0.82));
-  pot.position.y = 0.18; pot.castShadow = true; pot.receiveShadow = true; g.add(pot);
-  const soil = new THREE.Mesh(new THREE.CircleGeometry(0.21, 14), stdMat(0x3a2010, 0.95));
-  soil.rotation.x = -Math.PI / 2; soil.position.y = 0.37; g.add(soil);
-  const leafM = stdMat(leafCol, 0.9);
-  [{ r:0.40,h:0.52,y:0.70 },{ r:0.32,h:0.48,y:1.06 },{ r:0.23,h:0.42,y:1.40 },{ r:0.14,h:0.34,y:1.68 }].forEach(({ r,h,y }) => {
-    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 11), leafM);
-    c.position.y = y; c.castShadow = true; g.add(c);
-  });
-  return g;
-}
-
 function tvUnit(screenCol: number, cabinetCol: number): THREE.Group {
   const g = new THREE.Group();
   const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.48, 0.40), stdMat(cabinetCol, 0.68));
   cab.position.y = 0.24; cab.castShadow = true; cab.receiveShadow = true; g.add(cab);
-  const legM = stdMat(0x202020, 0.3, 0.6);
-  [[-0.7,0.16],[0.7,0.16],[-0.7,-0.16],[0.7,-0.16]].forEach(([lx,lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.08, 6), legM);
+  [[-0.7, 0.16], [0.7, 0.16], [-0.7, -0.16], [0.7, -0.16]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.08, 6), stdMat(0x202020, 0.3, 0.6));
     leg.position.set(lx, 0.04, lz); g.add(leg);
   });
   const screen = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.80, 0.055), stdMat(screenCol, 0.28, 0.55));
   screen.position.y = 1.01; screen.castShadow = true; g.add(screen);
   const display = new THREE.Mesh(new THREE.PlaneGeometry(1.26, 0.70),
-    new THREE.MeshStandardMaterial({ color: 0x060c14, emissive: 0x060c14, emissiveIntensity: 0.5, roughness: 0.02, metalness: 0.1 }));
+    new THREE.MeshStandardMaterial({ color: 0x060c14, emissive: 0x060c14, emissiveIntensity: 0.5, roughness: 0.02 }));
   display.position.set(0, 1.01, 0.032); g.add(display);
   return g;
 }
 
 function bookshelf(col: number): THREE.Group {
-  const g = new THREE.Group(); const wood = stdMat(col, 0.66);
+  const g = new THREE.Group(), wood = stdMat(col, 0.66);
   [-0.58, 0.58].forEach(x => {
     const s = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.1, 0.32), wood);
     s.position.set(x, 1.05, 0); s.castShadow = true; g.add(s);
@@ -269,16 +342,19 @@ function bookshelf(col: number): THREE.Group {
 function buildFurniture(item: FurnitureItem): THREE.Group {
   const { id, primary: p, secondary: s = 0x888880 } = item;
   switch (id) {
-    case 'sofa3':    return sofa(2.2, p);
+    case 'sofa3':    return sofa(2.5, p);
     case 'sofa2':    return sofa(1.6, p);
     case 'armchair': return armchair(p);
     case 'coffee':   return coffeeTable(p, s);
+    case 'sideboard':return sideboard(p, s);
     case 'dining':   return diningTable(p);
     case 'chair':    return diningChair(p);
     case 'bed':      return bed(p, s);
     case 'wardrobe': return wardrobe(p);
+    case 'arclamp':  return arcLamp(p, s);
     case 'lamp':     return floorLamp(p, s);
     case 'plant':    return plant(p);
+    case 'stool':    return stool(p);
     case 'tv':       return tvUnit(p, s);
     case 'shelf':    return bookshelf(p);
     default: {
@@ -289,34 +365,33 @@ function buildFurniture(item: FurnitureItem): THREE.Group {
   }
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: string | null }) {
-  const canvasRef       = useRef<HTMLCanvasElement>(null);
-  const sceneRef        = useRef<THREE.Scene | null>(null);
-  const rendererRef     = useRef<THREE.WebGLRenderer | null>(null);
-  const controlsRef     = useRef<OrbitControls | null>(null);
-  const cameraRef       = useRef<THREE.PerspectiveCamera | null>(null);
-  const placedRef       = useRef<PlacedItem[]>([]);
-  const rafRef          = useRef<number>(0);
-  const wallMatRefs     = useRef<Record<WallId, THREE.MeshStandardMaterial | null>>({ back: null, left: null, right: null, ceiling: null });
-  const floorMatRef     = useRef<THREE.MeshStandardMaterial | null>(null);
-  const selectedGrpRef  = useRef<THREE.Group | null>(null);
-  const boxHelperRef    = useRef<THREE.BoxHelper | null>(null);
-  const wallMeshToId    = useRef<Map<THREE.Mesh, WallId>>(new Map());
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const sceneRef       = useRef<THREE.Scene | null>(null);
+  const rendererRef    = useRef<THREE.WebGLRenderer | null>(null);
+  const controlsRef    = useRef<OrbitControls | null>(null);
+  const cameraRef      = useRef<THREE.PerspectiveCamera | null>(null);
+  const placedRef      = useRef<PlacedItem[]>([]);
+  const rafRef         = useRef<number>(0);
+  const wallMatRefs    = useRef<Record<WallId, THREE.MeshStandardMaterial | null>>({ back: null, left: null, right: null, ceiling: null });
+  const floorMatRef    = useRef<THREE.MeshStandardMaterial | null>(null);
+  const selectedGrpRef = useRef<THREE.Group | null>(null);
+  const boxHelperRef   = useRef<THREE.BoxHelper | null>(null);
+  const wallMeshToId   = useRef<Map<THREE.Mesh, WallId>>(new Map());
 
   const [wallColors, setWallColors] = useState<Record<WallId, string>>({
-    back: '#f2ece3', left: '#f2ece3', right: '#f2ece3', ceiling: '#faf7f2',
+    back: '#f7f4f0', left: '#f7f4f0', right: '#f7f4f0', ceiling: '#fafaf8',
   });
-  const [selectedWall,    setSelectedWall]    = useState<WallId>('back');
-  const [activeTab,       setActiveTab]       = useState<'furniture' | 'walls' | 'floor'>('furniture');
-  const [floorTint,       setFloorTint]       = useState('#ffffff');
-  const [activeCategory,  setActiveCategory]  = useState('Todos');
-  const [placed,          setPlaced]          = useState<PlacedItem[]>([]);
-  const [selectedUid,     setSelectedUid]     = useState<string | null>(null);
-  const [panelOpen,       setPanelOpen]       = useState(true);
+  const [selectedWall,   setSelectedWall]   = useState<WallId>('back');
+  const [activeTab,      setActiveTab]      = useState<'furniture' | 'walls' | 'floor'>('furniture');
+  const [floorTint,      setFloorTint]      = useState('#6b3c18');
+  const [activeCategory, setActiveCategory] = useState('Todos');
+  const [placed,         setPlaced]         = useState<PlacedItem[]>([]);
+  const [selectedUid,    setSelectedUid]    = useState<string | null>(null);
+  const [panelOpen,      setPanelOpen]      = useState(true);
 
-  // Live material updates
   useEffect(() => {
     const r = wallMatRefs.current;
     if (r.back)    r.back.color.set(wallColors.back);
@@ -325,86 +400,70 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     if (r.ceiling) r.ceiling.color.set(wallColors.ceiling);
   }, [wallColors]);
 
-  useEffect(() => {
-    if (floorMatRef.current) floorMatRef.current.color.set(floorTint);
-  }, [floorTint]);
+  useEffect(() => { if (floorMatRef.current) floorMatRef.current.color.set(floorTint); }, [floorTint]);
 
   useEffect(() => {
-    if (!selectedUid) {
-      selectedGrpRef.current = null;
-      if (boxHelperRef.current) boxHelperRef.current.visible = false;
-    }
+    if (!selectedUid) { selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }
   }, [selectedUid]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const W = canvas.parentElement?.clientWidth || 800;
-    const H = canvas.parentElement?.clientHeight || 600;
+    const canvas = canvasRef.current; if (!canvas) return;
+    const W = canvas.parentElement?.clientWidth || 800, H = canvas.parentElement?.clientHeight || 600;
 
-    // Scene + renderer
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#0d0d12');
     sceneRef.current = scene;
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setSize(W, H);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type   = THREE.PCFSoftShadowMap;
-    renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.82;
-    renderer.outputColorSpace    = THREE.SRGBColorSpace;
+    renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmrem.dispose();
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; pmrem.dispose();
 
     const camera = new THREE.PerspectiveCamera(52, W / H, 0.1, 60);
-    camera.position.set(0, 2.4, 6.0);
-    cameraRef.current = camera;
+    camera.position.set(0, 2.4, 6.0); cameraRef.current = camera;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true; controls.dampingFactor = 0.06;
     controls.minDistance = 1.5; controls.maxDistance = 12;
-    controls.maxPolarAngle = Math.PI / 2 + 0.1;
-    controls.target.set(0, 0.8, 0);
+    controls.maxPolarAngle = Math.PI / 2 + 0.1; controls.target.set(0, 0.8, 0);
     controlsRef.current = controls;
 
-    // Lights
-    scene.add(new THREE.AmbientLight(0xfff0d8, 0.30));
-    const winLight = new THREE.DirectionalLight(0xfff3ce, 3.0);
-    winLight.position.set(1.5, 5, -7); winLight.target.position.set(0, 0, 1.5);
+    // Lights — warm daylight from right window
+    scene.add(new THREE.AmbientLight(0xfff4e0, 0.55));
+    const winLight = new THREE.DirectionalLight(0xfff8ee, 4.2);
+    winLight.position.set(7, 5, 1); winLight.target.position.set(0, 0, 0);
     winLight.castShadow = true; winLight.shadow.mapSize.set(2048, 2048);
-    winLight.shadow.camera.near = 2; winLight.shadow.camera.far = 20;
-    winLight.shadow.camera.left = -5; winLight.shadow.camera.right = 5;
+    winLight.shadow.camera.near = 2; winLight.shadow.camera.far = 22;
+    winLight.shadow.camera.left = -6; winLight.shadow.camera.right = 6;
     winLight.shadow.camera.top = 5; winLight.shadow.camera.bottom = -5;
     winLight.shadow.bias = -0.001; winLight.shadow.normalBias = 0.025;
     scene.add(winLight); scene.add(winLight.target);
-    const ceilLight = new THREE.PointLight(0xfff8e8, 2.2, 10);
+    const ceilLight = new THREE.PointLight(0xfff8e8, 1.8, 10);
     ceilLight.position.set(0, 2.88, 0.4);
     ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(512, 512); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
-    const fill = new THREE.DirectionalLight(0xd0e4ff, 0.45);
-    fill.position.set(0, 2, 7); scene.add(fill);
+    scene.add(Object.assign(new THREE.DirectionalLight(0xd8e8ff, 0.4), { position: new THREE.Vector3(-3, 3, 5) }));
 
-    // Room geometry
     const RW = 7, RH = 3, RD = 6.5;
     const plasterN = makePlasterNormal();
     const mkWallMat = (hex: string) => new THREE.MeshStandardMaterial({
-      color: new THREE.Color(hex), roughness: 0.92, metalness: 0,
-      normalMap: plasterN, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 0.12,
+      color: new THREE.Color(hex), roughness: 0.90, metalness: 0,
+      normalMap: plasterN, normalScale: new THREE.Vector2(0.28, 0.28), envMapIntensity: 0.15,
     });
 
-    const backMat  = mkWallMat('#f2ece3');
-    const leftMat  = mkWallMat('#f2ece3');
-    const rightMat = mkWallMat('#f2ece3');
-    const ceilMat  = new THREE.MeshStandardMaterial({ color: new THREE.Color('#faf7f2'), roughness: 0.88, envMapIntensity: 0.1 });
+    const backMat  = mkWallMat('#f7f4f0');
+    const leftMat  = mkWallMat('#f7f4f0');
+    const rightMat = mkWallMat('#f7f4f0');
+    const ceilMat  = new THREE.MeshStandardMaterial({ color: new THREE.Color('#fafaf8'), roughness: 0.85, envMapIntensity: 0.12 });
     wallMatRefs.current = { back: backMat, left: leftMat, right: rightMat, ceiling: ceilMat };
 
     const woodTex  = makeWoodTex();
-    const floorMat = new THREE.MeshStandardMaterial({ map: woodTex, color: new THREE.Color('#ffffff'), roughness: 0.62, metalness: 0, envMapIntensity: 0.38 });
+    const floorMat = new THREE.MeshStandardMaterial({ map: woodTex, color: new THREE.Color('#6b3c18'), roughness: 0.60, metalness: 0, envMapIntensity: 0.35 });
     floorMatRef.current = floorMat;
     const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), floorMat);
     floorMesh.rotation.x = -Math.PI / 2; floorMesh.receiveShadow = true; scene.add(floorMesh);
@@ -413,90 +472,129 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     ceil.rotation.x = Math.PI / 2; ceil.position.y = RH; scene.add(ceil);
 
     // Ceiling fixture
-    const fixtM = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.5, metalness: 0.3 });
-    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.06, 16), fixtM);
-    fixture.position.set(0, RH - 0.03, 0.4); scene.add(fixture);
-    const bulbGeo = new THREE.SphereGeometry(0.09, 10, 8);
-    const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.0, roughness: 0.05 });
-    const bulbMesh = new THREE.Mesh(bulbGeo, bulbMat);
-    bulbMesh.position.set(0, RH - 0.1, 0.4); scene.add(bulbMesh);
+    const fixtM = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.5, metalness: 0.25 });
+    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.055, 16), fixtM), { position: new THREE.Vector3(0, RH - 0.028, 0.4) }));
+    const bulbGlob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.0, roughness: 0.04 }));
+    bulbGlob.position.set(0, RH - 0.1, 0.4); scene.add(bulbGlob);
 
-    // Per-wall meshes registered for click detection
-    const addWall = (w: number, h: number, mat: THREE.MeshStandardMaterial, pos: [number,number,number], ry: number, id: WallId) => {
+    // Per-wall meshes
+    const addWall = (w: number, h: number, mat: THREE.MeshStandardMaterial, pos: [number, number, number], ry: number, id: WallId) => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(...pos); mesh.rotation.y = ry; mesh.receiveShadow = true;
       scene.add(mesh); wallMeshToId.current.set(mesh, id);
     };
-    addWall(RW, RH, backMat,  [0, RH/2, -RD/2], 0,           'back');
-    addWall(RD, RH, leftMat,  [-RW/2, RH/2, 0], Math.PI/2,   'left');
-    addWall(RD, RH, rightMat, [RW/2,  RH/2, 0], -Math.PI/2,  'right');
+    addWall(RW, RH, backMat,  [0, RH / 2, -RD / 2], 0,          'back');
+    addWall(RD, RH, leftMat,  [-RW / 2, RH / 2, 0], Math.PI / 2,  'left');
+    addWall(RD, RH, rightMat, [RW / 2,  RH / 2, 0], -Math.PI / 2, 'right');
 
-    // Window
-    const winFrameM = new THREE.MeshStandardMaterial({ color: 0xe8dfd2, roughness: 0.45, metalness: 0.08 });
-    const winFrame  = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.85, 0.1), winFrameM);
-    winFrame.position.set(0, 2.05, -RD/2 + 0.07); scene.add(winFrame);
-    const winGlass  = new THREE.Mesh(new THREE.PlaneGeometry(1.60, 1.60),
-      new THREE.MeshStandardMaterial({ color: 0xb0d4f4, emissive: 0x70b0e0, emissiveIntensity: 1.4, transparent: true, opacity: 0.6, roughness: 0, metalness: 0.05 }));
-    winGlass.position.set(0, 2.05, -RD/2 + 0.12); scene.add(winGlass);
-    const barM = new THREE.MeshStandardMaterial({ color: 0xddd5c8, roughness: 0.45 });
+    // ── Neoclassical wall panel moldings on back wall ───────────────────────
+    const moldM = new THREE.MeshStandardMaterial({ color: 0xfaf8f4, roughness: 0.48, envMapIntensity: 0.55 });
+    const addPanelFrame = (cx: number, cy: number, pw: number, ph: number) => {
+      const z = -RD / 2 + 0.026, th = 0.03, d = 0.016;
+      const bar = (bx: number, by: number, bw: number, bh: number) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, d), moldM);
+        b.position.set(bx, by, z); scene.add(b);
+      };
+      bar(cx, cy + ph / 2 + th / 2, pw + th * 2, th);
+      bar(cx, cy - ph / 2 - th / 2, pw + th * 2, th);
+      bar(cx - pw / 2 - th / 2, cy, th, ph);
+      bar(cx + pw / 2 + th / 2, cy, th, ph);
+    };
+    addPanelFrame(-2.3, 1.28, 1.90, 1.95);
+    addPanelFrame( 0.0, 1.28, 1.90, 1.95);
+    addPanelFrame( 2.3, 1.28, 1.90, 1.95);
+
+    // ── Landscape painting on center back wall panel ────────────────────────
+    const artTex = makeArtTex();
+    const artFrameM = new THREE.MeshStandardMaterial({ color: 0xf6f2ec, roughness: 0.52, envMapIntensity: 0.4 });
+    const artFrame = new THREE.Mesh(new THREE.BoxGeometry(1.96, 1.24, 0.04), artFrameM);
+    artFrame.position.set(0, 2.06, -RD / 2 + 0.055); scene.add(artFrame);
+    const artMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.76, 1.04),
+      new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.88 }));
+    artMesh.position.set(0, 2.06, -RD / 2 + 0.08); scene.add(artMesh);
+
+    // ── Right wall window + curtains ────────────────────────────────────────
+    const rWinGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.1),
+      new THREE.MeshStandardMaterial({ color: 0xc4dcf4, emissive: 0x98c4e0, emissiveIntensity: 2.2, transparent: true, opacity: 0.48, roughness: 0, metalness: 0.02 }));
+    rWinGlass.rotation.y = -Math.PI / 2;
+    rWinGlass.position.set(RW / 2 - 0.07, 1.72, 0.8); scene.add(rWinGlass);
+
+    const rWinFrameM = new THREE.MeshStandardMaterial({ color: 0xf0ece5, roughness: 0.4, metalness: 0.06 });
+    const rWinFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.18, 2.88), rWinFrameM);
+    rWinFrame.position.set(RW / 2 - 0.04, 1.72, 0.8); scene.add(rWinFrame);
+    // Cross bars
     [0, 1].forEach(i => {
-      const b = new THREE.Mesh(i === 0 ? new THREE.BoxGeometry(1.60, 0.045, 0.04) : new THREE.BoxGeometry(0.045, 1.60, 0.04), barM);
-      b.position.set(0, 2.05, -RD/2 + 0.14); scene.add(b);
+      const b = new THREE.Mesh(i === 0 ? new THREE.BoxGeometry(0.04, 2.10, 0.04) : new THREE.BoxGeometry(0.04, 0.04, 2.80), rWinFrameM);
+      b.position.set(RW / 2 - 0.05, 1.72, 0.8); scene.add(b);
+    });
+
+    // Curtain rod
+    const rodM = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.18, metalness: 0.9 });
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 8), rodM);
+    rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
+
+    // Camel linen curtains
+    const curtM = new THREE.MeshStandardMaterial({ color: 0xb89870, roughness: 0.95, side: THREE.FrontSide });
+    [[2.3], [-0.75]].forEach(([cz]) => {
+      const c = new THREE.Mesh(new THREE.BoxGeometry(0.09, RH - 0.08, 1.3), curtM);
+      c.position.set(RW / 2 - 0.16, (RH - 0.08) / 2 + 0.04, cz);
+      c.castShadow = true; c.receiveShadow = true; scene.add(c);
     });
 
     // Skirting boards
-    const skirtM = new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.55, envMapIntensity: 0.3 });
-    const skirt = (w: number, p: [number,number,number], ry: number) => {
+    const skirtM = new THREE.MeshStandardMaterial({ color: 0xf5f2ee, roughness: 0.52, envMapIntensity: 0.35 });
+    const skirt = (w: number, p: [number, number, number], ry: number) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.025), skirtM);
       m.position.set(...p); m.rotation.y = ry; m.receiveShadow = true; scene.add(m);
     };
-    skirt(RW, [0, 0.05, -RD/2+0.013], 0);
-    skirt(RD, [-RW/2+0.013, 0.05, 0], Math.PI/2);
-    skirt(RD, [ RW/2-0.013, 0.05, 0], Math.PI/2);
+    skirt(RW, [0, 0.05, -RD / 2 + 0.013], 0);
+    skirt(RD, [-RW / 2 + 0.013, 0.05, 0], Math.PI / 2);
+    skirt(RD, [RW / 2 - 0.013, 0.05, 0], Math.PI / 2);
 
     // Crown molding
-    const crownM = new THREE.MeshStandardMaterial({ color: 0xfafaf8, roughness: 0.65 });
-    const crown = (w: number, p: [number,number,number], ry: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.055, 0.055), crownM);
+    const crownM = new THREE.MeshStandardMaterial({ color: 0xfafaf8, roughness: 0.62 });
+    const crown = (w: number, p: [number, number, number], ry: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.058, 0.058), crownM);
       m.position.set(...p); m.rotation.y = ry; scene.add(m);
     };
-    crown(RW, [0, RH-0.028, -RD/2+0.028], 0);
-    crown(RD, [-RW/2+0.028, RH-0.028, 0], Math.PI/2);
-    crown(RD, [ RW/2-0.028, RH-0.028, 0], Math.PI/2);
+    crown(RW, [0, RH - 0.03, -RD / 2 + 0.03], 0);
+    crown(RD, [-RW / 2 + 0.03, RH - 0.03, 0], Math.PI / 2);
+    crown(RD, [RW / 2 - 0.03, RH - 0.03, 0], Math.PI / 2);
 
     // BoxHelper
     const placeholder = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001));
     const boxHelper = new THREE.BoxHelper(placeholder, 0x00d4ff);
-    boxHelper.visible = false; scene.add(boxHelper);
-    boxHelperRef.current = boxHelper;
+    boxHelper.visible = false; scene.add(boxHelper); boxHelperRef.current = boxHelper;
 
-    // Pre-load example scene
-    const examples = [
-      { id: 'sofa3',  x: 0,    z: 1.8,  ry: 0             },
-      { id: 'coffee', x: 0,    z: 0.42, ry: 0             },
-      { id: 'tv',     x: 0,    z: -2.1, ry: Math.PI       },
-      { id: 'plant',  x: 2.6,  z: -1.9, ry: 0             },
-      { id: 'lamp',   x: -2.4, z: 1.2,  ry: 0             },
-      { id: 'shelf',  x: -3.0, z: -0.5, ry: Math.PI / 2   },
+    // ── Pre-loaded reference scene (matching the neoclassical image) ────────
+    const refScene: Array<{ build: () => THREE.Group; id: string; x: number; z: number; ry: number }> = [
+      { build: () => sofa(2.5, 0xe0dac8),           id: 'sofa3',     x:  1.3,  z:  1.6,  ry: Math.PI },
+      { build: () => armchair(0xc0681c),             id: 'armchair',  x: -0.85, z:  0.38, ry: Math.PI * 0.58 },
+      { build: () => armchair(0xc0681c),             id: 'armchair',  x:  0.5,  z:  0.22, ry: Math.PI * 0.82 },
+      { build: () => coffeeTable(0xf0ebe0, 0xd4c080),id: 'coffee',    x:  0.4,  z:  1.14, ry: 0 },
+      { build: () => sideboard(0xc8a870, 0xc0a040),  id: 'sideboard', x: -3.05, z: -1.2,  ry: Math.PI / 2 },
+      { build: () => arcLamp(0xb8a050, 0xf0ece6),    id: 'arclamp',   x:  2.9,  z:  0.5,  ry: -Math.PI / 4 },
+      { build: () => plant(0x2e5a28),                id: 'plant',     x: -2.6,  z:  1.4,  ry: 0 },
+      { build: () => stool(0x151515),                id: 'stool',     x: -0.25, z:  2.35, ry: 0 },
+      { build: () => stool(0x151515),                id: 'stool',     x:  0.6,  z:  2.55, ry: 0.8 },
     ];
     const initPlaced: PlacedItem[] = [];
-    examples.forEach(({ id, x, z, ry }, i) => {
+    refScene.forEach(({ build, id, x, z, ry }, i) => {
       const item = CATALOG.find(f => f.id === id)!;
-      const group = buildFurniture(item);
+      const group = build();
       group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
       group.position.set(x, 0, z); group.rotation.y = ry;
       scene.add(group);
       initPlaced.push({ uid: `${id}-init-${i}`, item, group });
     });
-    placedRef.current = initPlaced;
-    setPlaced([...initPlaced]);
+    placedRef.current = initPlaced; setPlaced([...initPlaced]);
 
-    // Pointer events for furniture drag + wall click
-    const raycaster  = new THREE.Raycaster();
+    // ── Pointer events ──────────────────────────────────────────────────────
+    const raycaster = new THREE.Raycaster();
     const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     let potDrag: { uid: string; group: THREE.Group } | null = null;
-    let isDrag = false;
-    let downX = 0, downY = 0;
+    let isDrag = false, downX = 0, downY = 0;
     const dragOffset = new THREE.Vector3();
 
     const toNDC = (cx: number, cy: number) => {
@@ -506,8 +604,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
 
     const onPD = (e: PointerEvent) => {
       downX = e.clientX; downY = e.clientY; isDrag = false;
-      const ndc = toNDC(e.clientX, e.clientY);
-      raycaster.setFromCamera(ndc, camera);
+      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
       const meshes: THREE.Object3D[] = [];
       placedRef.current.forEach(p => p.group.traverse(c => { if (c instanceof THREE.Mesh) meshes.push(c); }));
       if (meshes.length) {
@@ -518,8 +615,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
           const found = placedRef.current.find(p => p.group === obj);
           if (found) {
             potDrag = { uid: found.uid, group: found.group };
-            controls.enabled = false;
-            canvas.setPointerCapture(e.pointerId);
+            controls.enabled = false; canvas.setPointerCapture(e.pointerId);
             const pt = new THREE.Vector3();
             raycaster.ray.intersectPlane(floorPlane, pt);
             dragOffset.set(found.group.position.x - pt.x, 0, found.group.position.z - pt.z);
@@ -533,44 +629,30 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
       if (!potDrag) return;
       if (!isDrag && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) return;
       isDrag = true;
-      const ndc = toNDC(e.clientX, e.clientY);
-      raycaster.setFromCamera(ndc, camera);
-      const pt = new THREE.Vector3();
-      raycaster.ray.intersectPlane(floorPlane, pt);
-      potDrag.group.position.x = Math.max(-RW/2 + 0.5, Math.min(RW/2 - 0.5, pt.x + dragOffset.x));
-      potDrag.group.position.z = Math.max(-RD/2 + 0.5, Math.min(RD/2 - 0.5, pt.z + dragOffset.z));
-      if (boxHelperRef.current && boxHelperRef.current.visible) {
-        boxHelperRef.current.setFromObject(potDrag.group);
-      }
+      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
+      const pt = new THREE.Vector3(); raycaster.ray.intersectPlane(floorPlane, pt);
+      potDrag.group.position.x = Math.max(-RW / 2 + 0.5, Math.min(RW / 2 - 0.5, pt.x + dragOffset.x));
+      potDrag.group.position.z = Math.max(-RD / 2 + 0.5, Math.min(RD / 2 - 0.5, pt.z + dragOffset.z));
+      if (boxHelperRef.current?.visible) boxHelperRef.current.setFromObject(potDrag.group);
     };
 
     const onPU = (e: PointerEvent) => {
       controls.enabled = true;
       if (potDrag) {
         if (!isDrag) {
-          setSelectedUid(potDrag.uid);
-          selectedGrpRef.current = potDrag.group;
-          if (boxHelperRef.current) {
-            boxHelperRef.current.setFromObject(potDrag.group);
-            boxHelperRef.current.visible = true;
-          }
+          setSelectedUid(potDrag.uid); selectedGrpRef.current = potDrag.group;
+          if (boxHelperRef.current) { boxHelperRef.current.setFromObject(potDrag.group); boxHelperRef.current.visible = true; }
         }
-        canvas.releasePointerCapture(e.pointerId);
-        potDrag = null; isDrag = false;
-      } else {
-        if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
-          const ndc = toNDC(e.clientX, e.clientY);
-          raycaster.setFromCamera(ndc, camera);
-          const wallMeshes = [...wallMeshToId.current.keys()];
-          const hits = raycaster.intersectObjects(wallMeshes);
-          if (hits.length) {
-            const wId = wallMeshToId.current.get(hits[0].object as THREE.Mesh);
-            if (wId) { setSelectedWall(wId); setActiveTab('walls'); }
-          } else {
-            setSelectedUid(null);
-            selectedGrpRef.current = null;
-            if (boxHelperRef.current) boxHelperRef.current.visible = false;
-          }
+        canvas.releasePointerCapture(e.pointerId); potDrag = null; isDrag = false;
+      } else if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
+        raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
+        const hits = raycaster.intersectObjects([...wallMeshToId.current.keys()]);
+        if (hits.length) {
+          const wId = wallMeshToId.current.get(hits[0].object as THREE.Mesh);
+          if (wId) { setSelectedWall(wId); setActiveTab('walls'); }
+        } else {
+          setSelectedUid(null); selectedGrpRef.current = null;
+          if (boxHelperRef.current) boxHelperRef.current.visible = false;
         }
       }
     };
@@ -580,16 +662,13 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     canvas.addEventListener('pointerup', onPU);
 
     const onResize = () => {
-      const w = canvas.parentElement?.clientWidth || 800;
-      const h = canvas.parentElement?.clientHeight || 600;
-      camera.aspect = w / h; camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      const w = canvas.parentElement?.clientWidth || 800, h = canvas.parentElement?.clientHeight || 600;
+      camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
     };
     window.addEventListener('resize', onResize);
 
     const animate = () => {
-      rafRef.current = requestAnimationFrame(animate);
-      controls.update();
+      rafRef.current = requestAnimationFrame(animate); controls.update();
       renderer.render(scene, camera);
     };
     animate();
@@ -599,8 +678,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
       canvas.removeEventListener('pointerdown', onPD);
       canvas.removeEventListener('pointermove', onPM);
       canvas.removeEventListener('pointerup', onPU);
-      cancelAnimationFrame(rafRef.current);
-      renderer.dispose();
+      cancelAnimationFrame(rafRef.current); renderer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -634,92 +712,58 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     }
     placedRef.current = placedRef.current.filter(p => p.uid !== uid);
     setPlaced([...placedRef.current]);
-    if (selectedUid === uid) {
-      setSelectedUid(null); selectedGrpRef.current = null;
-      if (boxHelperRef.current) boxHelperRef.current.visible = false;
-    }
+    if (selectedUid === uid) { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }
   }
 
-  function rotateSelected(dir: 1 | -1) {
-    if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += dir * Math.PI / 4;
-  }
-
-  function setWallColor(id: WallId, hex: string) {
-    setWallColors(prev => ({ ...prev, [id]: hex }));
-  }
+  function rotateSelected(dir: 1 | -1) { if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += dir * Math.PI / 4; }
+  function setWallColor(id: WallId, hex: string) { setWallColors(prev => ({ ...prev, [id]: hex })); }
 
   const filtered = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(f => f.category === activeCategory);
 
-  // ── UI ───────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
-
-      {/* Canvas area */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-
-        {/* Hint */}
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#64748b', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.52)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#64748b', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           Arrastra muebles · Órbita con ratón · Clic en pared para pintarla
         </div>
-
-        {/* Panel toggle */}
-        <button onClick={() => setPanelOpen(o => !o)}
-          style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem' }}>
+        <button onClick={() => setPanelOpen(o => !o)} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem' }}>
           {panelOpen ? '▶ Ocultar' : '◀ Panel'}
         </button>
-
-        {/* Floating selection toolbar */}
         {selectedUid && (
           <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(0,212,255,0.35)', borderRadius: 10, padding: '6px 10px', backdropFilter: 'blur(6px)' }}>
-            <button onClick={() => rotateSelected(-1)}
-              style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }} title="Rotar izquierda">↺</button>
-            <button onClick={() => rotateSelected(1)}
-              style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }} title="Rotar derecha">↻</button>
-            <button onClick={() => removeItem(selectedUid)}
-              style={{ background: '#2d1c1c', border: '1px solid #7f1d1d', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }} title="Eliminar">🗑</button>
-            <button onClick={() => { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }}
-              style={{ background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', padding: '5px 8px', fontSize: '1rem' }}>✕</button>
+            <button onClick={() => rotateSelected(-1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↺</button>
+            <button onClick={() => rotateSelected(1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↻</button>
+            <button onClick={() => removeItem(selectedUid)} style={{ background: '#2d1c1c', border: '1px solid #7f1d1d', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>🗑</button>
+            <button onClick={() => { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }} style={{ background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', padding: '5px 8px', fontSize: '1rem' }}>✕</button>
           </div>
         )}
       </div>
 
-      {/* Side panel */}
       {panelOpen && (
         <div style={{ width: 282, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-
-          {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
             {(['furniture', 'walls', 'floor'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                style={{ flex: 1, padding: '11px 4px', background: activeTab === tab ? '#1e293b' : 'transparent', border: 'none', color: activeTab === tab ? '#e2e8f0' : '#64748b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent' }}>
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: '11px 4px', background: activeTab === tab ? '#1e293b' : 'transparent', border: 'none', color: activeTab === tab ? '#e2e8f0' : '#64748b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent' }}>
                 {tab === 'furniture' ? '🛋️ Muebles' : tab === 'walls' ? '🎨 Paredes' : '🪵 Suelo'}
               </button>
             ))}
           </div>
 
-          {/* ── Muebles tab ── */}
           {activeTab === 'furniture' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', gap: 4, padding: '8px 10px', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
                 {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)}
-                    style={{ padding: '4px 10px', borderRadius: 16, border: 'none', background: activeCategory === cat ? '#3b82f6' : '#1e293b', color: activeCategory === cat ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: activeCategory === cat ? 600 : 400 }}>
-                    {cat}
-                  </button>
+                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ padding: '4px 10px', borderRadius: 16, border: 'none', background: activeCategory === cat ? '#3b82f6' : '#1e293b', color: activeCategory === cat ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: activeCategory === cat ? 600 : 400 }}>{cat}</button>
                 ))}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
                 {filtered.map(item => (
-                  <button key={item.id} onClick={() => addFurniture(item)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}
+                  <button key={item.id} onClick={() => addFurniture(item)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}
                     onMouseEnter={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                     onMouseLeave={e => (e.currentTarget.style.borderColor = '#334155')}>
                     <span style={{ fontSize: '1.4rem' }}>{item.emoji}</span>
-                    <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#475569' }}>{item.category}</div>
-                    </div>
+                    <div><div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</div><div style={{ fontSize: '0.7rem', color: '#475569' }}>{item.category}</div></div>
                     <span style={{ marginLeft: 'auto', color: '#3b82f6', fontSize: '1.1rem' }}>+</span>
                   </button>
                 ))}
@@ -727,7 +771,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
               {placed.length > 0 && (
                 <div style={{ borderTop: '1px solid #1f2937', padding: '10px', flexShrink: 0 }}>
                   <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>En la habitación ({placed.length})</p>
-                  <div style={{ maxHeight: 120, overflowY: 'auto' }}>
+                  <div style={{ maxHeight: 110, overflowY: 'auto' }}>
                     {placed.map(p => (
                       <div key={p.uid} onClick={() => { setSelectedUid(p.uid); selectedGrpRef.current = p.group; if (boxHelperRef.current) { boxHelperRef.current.setFromObject(p.group); boxHelperRef.current.visible = true; } }}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 6, background: selectedUid === p.uid ? '#1e3a5f' : 'transparent', marginBottom: 2, cursor: 'pointer' }}>
@@ -741,51 +785,40 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
             </div>
           )}
 
-          {/* ── Paredes tab ── */}
           {activeTab === 'walls' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
-              {/* Wall selector */}
               <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selecciona pared</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
                 {(['back', 'left', 'right', 'ceiling'] as WallId[]).map(id => (
-                  <button key={id} onClick={() => setSelectedWall(id)}
-                    style={{ padding: '8px 6px', borderRadius: 8, border: `2px solid ${selectedWall === id ? '#3b82f6' : '#334155'}`, background: selectedWall === id ? '#1e3a5f' : '#1e293b', color: selectedWall === id ? '#e2e8f0' : '#94a3b8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: selectedWall === id ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button key={id} onClick={() => setSelectedWall(id)} style={{ padding: '8px 6px', borderRadius: 8, border: `2px solid ${selectedWall === id ? '#3b82f6' : '#334155'}`, background: selectedWall === id ? '#1e3a5f' : '#1e293b', color: selectedWall === id ? '#e2e8f0' : '#94a3b8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: selectedWall === id ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 14, height: 14, borderRadius: 3, background: wallColors[id], border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0, display: 'inline-block' }} />
                     {WALL_LABELS[id]}
                   </button>
                 ))}
               </div>
-              {/* Color swatches */}
               <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Color</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7, marginBottom: 14 }}>
                 {WALL_COLORS.map(c => (
-                  <button key={c.hex} onClick={() => setWallColor(selectedWall, c.hex)}
-                    style={{ padding: '9px 8px', borderRadius: 8, border: `2px solid ${wallColors[selectedWall] === c.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button key={c.hex} onClick={() => setWallColor(selectedWall, c.hex)} style={{ padding: '9px 8px', borderRadius: 8, border: `2px solid ${wallColors[selectedWall] === c.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ width: 20, height: 20, borderRadius: 4, background: c.hex, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, display: 'block' }} />
                     <span style={{ fontSize: '0.73rem', color: wallColors[selectedWall] === c.hex ? '#e2e8f0' : '#94a3b8', fontWeight: wallColors[selectedWall] === c.hex ? 600 : 400 }}>{c.name}</span>
                   </button>
                 ))}
               </div>
-              {/* Custom picker */}
               <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 8px' }}>Personalizado</p>
-              <input type="color" value={wallColors[selectedWall]} onChange={e => setWallColor(selectedWall, e.target.value)}
-                style={{ width: '100%', height: 38, borderRadius: 8, border: '1px solid #334155', background: 'transparent', cursor: 'pointer', padding: 2, marginBottom: 12 }} />
-              {/* Apply to all */}
-              <button onClick={() => setWallColors({ back: wallColors[selectedWall], left: wallColors[selectedWall], right: wallColors[selectedWall], ceiling: wallColors[selectedWall] })}
-                style={{ width: '100%', padding: '9px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}>
+              <input type="color" value={wallColors[selectedWall]} onChange={e => setWallColor(selectedWall, e.target.value)} style={{ width: '100%', height: 38, borderRadius: 8, border: '1px solid #334155', background: 'transparent', cursor: 'pointer', padding: 2, marginBottom: 12 }} />
+              <button onClick={() => setWallColors({ back: wallColors[selectedWall], left: wallColors[selectedWall], right: wallColors[selectedWall], ceiling: wallColors[selectedWall] })} style={{ width: '100%', padding: '9px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}>
                 Aplicar a todas las paredes
               </button>
             </div>
           )}
 
-          {/* ── Suelo tab ── */}
           {activeTab === 'floor' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
               <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tono de suelo</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7 }}>
                 {FLOOR_TINTS.map(t => (
-                  <button key={t.hex} onClick={() => setFloorTint(t.hex)}
-                    style={{ padding: '10px 8px', borderRadius: 8, border: `2px solid ${floorTint === t.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <button key={t.hex} onClick={() => setFloorTint(t.hex)} style={{ padding: '10px 8px', borderRadius: 8, border: `2px solid ${floorTint === t.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 44, height: 28, borderRadius: 6, background: t.hex === '#ffffff' ? 'linear-gradient(135deg,#e8d5a0 0%,#c9a97a 50%,#a07840 100%)' : t.hex, border: '1px solid rgba(255,255,255,0.12)', display: 'block' }} />
                     <span style={{ fontSize: '0.72rem', color: floorTint === t.hex ? '#e2e8f0' : '#94a3b8', fontWeight: floorTint === t.hex ? 600 : 400 }}>{t.name}</span>
                   </button>
@@ -794,7 +827,6 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
             </div>
           )}
 
-          {/* CTA */}
           <div style={{ padding: '14px 12px', borderTop: '1px solid #1f2937', flexShrink: 0 }}>
             <a href="/login" style={{ display: 'block', padding: '11px', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', color: '#fff', borderRadius: 8, textAlign: 'center', fontWeight: 600, fontSize: '0.9rem', textDecoration: 'none', marginBottom: 8 }}>
               Guardar y crear cuenta →
