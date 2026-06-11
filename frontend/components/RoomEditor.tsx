@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 type WallId = 'back' | 'left' | 'right' | 'ceiling';
 interface FurnitureItem { id: string; name: string; category: string; emoji: string; primary: number; secondary?: number; }
@@ -55,138 +61,222 @@ const WALL_LABELS: Record<WallId, string> = { back: 'Fondo', left: 'Izquierda', 
 // ── Textures ─────────────────────────────────────────────────────────────────
 
 function makeWoodTex(): THREE.CanvasTexture {
-  const S = 1024, cv = document.createElement('canvas');
+  const S = 2048, cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const cx = cv.getContext('2d')!;
-  const PW = S / 5, PH = S / 4;
-  for (let row = 0; row < 5; row++) {
-    for (let col = -1; col < 7; col++) {
+  const PW = S / 5, PH = S / 3;
+  for (let row = 0; row < 6; row++) {
+    for (let col = -1; col < 8; col++) {
       const shift = (row % 2) * (PW / 2);
       const x = col * PW + shift, y = row * PH;
-      cx.fillStyle = `hsl(26,50%,${32 + Math.random() * 14}%)`;
+      const li = 28 + Math.random() * 16, sa = 44 + Math.random() * 14;
+      cx.fillStyle = `hsl(26,${sa}%,${li}%)`;
       cx.fillRect(x + 1, y + 1, PW - 2, PH - 2);
-      cx.save(); cx.globalAlpha = 0.07; cx.strokeStyle = '#000'; cx.lineWidth = 0.9;
-      for (let g = 1; g < 10; g++) {
-        const gy = y + (g / 10) * PH;
+      cx.save(); cx.globalAlpha = 0.055; cx.strokeStyle = '#000'; cx.lineWidth = 0.8;
+      for (let g = 0; g < 20; g++) {
+        const gy = y + (g / 20) * PH;
         cx.beginPath();
-        cx.moveTo(x, gy + (Math.random() - 0.5) * 4);
-        cx.bezierCurveTo(x + PW * 0.4, gy + (Math.random() - 0.5) * 6, x + PW * 0.7, gy + (Math.random() - 0.5) * 6, x + PW, gy + (Math.random() - 0.5) * 4);
+        cx.moveTo(x, gy + (Math.random() - 0.5) * 5);
+        cx.bezierCurveTo(x + PW * 0.3, gy + (Math.random() - 0.5) * 10, x + PW * 0.7, gy + (Math.random() - 0.5) * 10, x + PW, gy + (Math.random() - 0.5) * 5);
         cx.stroke();
       }
       cx.restore();
-      cx.fillStyle = 'rgba(0,0,0,0.25)';
+      // occasional knot
+      if (Math.random() < 0.07) {
+        const kx = x + PW * (0.2 + Math.random() * 0.6), ky = y + PH * (0.2 + Math.random() * 0.6);
+        cx.save(); cx.globalAlpha = 0.12;
+        for (let r = 18; r > 2; r -= 4) {
+          cx.strokeStyle = `hsl(22,50%,${22 - r * 0.4}%)`;
+          cx.lineWidth = 1.5;
+          cx.beginPath(); cx.ellipse(kx, ky, r * 1.5, r * 0.8, 0.2, 0, Math.PI * 2); cx.stroke();
+        }
+        cx.restore();
+      }
+      cx.fillStyle = 'rgba(0,0,0,0.28)';
       cx.fillRect(x, y, 1.5, PH); cx.fillRect(x, y, PW, 1.5);
     }
   }
   const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2.5, 1.8);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1.5);
   t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
 function makePlasterNormal(): THREE.CanvasTexture {
-  const S = 256, cv = document.createElement('canvas');
+  const S = 512, cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const cx = cv.getContext('2d')!; cx.fillStyle = '#8080ff'; cx.fillRect(0, 0, S, S);
   const id = cx.getImageData(0, 0, S, S);
   for (let i = 0; i < id.data.length; i += 4) {
-    id.data[i] = 128 + (Math.random() - 0.5) * 16;
-    id.data[i + 1] = 128 + (Math.random() - 0.5) * 16;
+    id.data[i]     = 128 + (Math.random() - 0.5) * 14;
+    id.data[i + 1] = 128 + (Math.random() - 0.5) * 14;
     id.data[i + 2] = 255; id.data[i + 3] = 255;
   }
   cx.putImageData(id, 0, 0);
   const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4); return t;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); return t;
 }
 
 function makeArtTex(): THREE.CanvasTexture {
-  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 300;
+  const cv = document.createElement('canvas'); cv.width = 640; cv.height = 400;
   const cx = cv.getContext('2d')!;
-  const sky = cx.createLinearGradient(0, 0, 0, 140);
-  sky.addColorStop(0, '#d0c8b8'); sky.addColorStop(1, '#c4bba8');
-  cx.fillStyle = sky; cx.fillRect(0, 0, 512, 140);
-  const field = cx.createLinearGradient(0, 140, 0, 300);
-  field.addColorStop(0, '#c8a048'); field.addColorStop(0.45, '#9a7028'); field.addColorStop(1, '#5e3c18');
-  cx.fillStyle = field; cx.fillRect(0, 140, 512, 160);
-  for (let i = 0; i < 420; i++) {
-    const gx = Math.random() * 512, gy = 140 + Math.random() * 110, r = 1 + Math.random() * 9;
-    cx.fillStyle = `rgba(${200 + Math.random() * 55},${140 + Math.random() * 50},${30 + Math.random() * 40},${0.2 + Math.random() * 0.5})`;
-    cx.beginPath(); cx.arc(gx, gy, r, 0, Math.PI * 2); cx.fill();
+  const sky = cx.createLinearGradient(0, 0, 0, 180);
+  sky.addColorStop(0, '#ddd4be'); sky.addColorStop(0.6, '#c8b87a'); sky.addColorStop(1, '#b89f58');
+  cx.fillStyle = sky; cx.fillRect(0, 0, 640, 180);
+  const sunG = cx.createRadialGradient(480, 70, 0, 480, 70, 90);
+  sunG.addColorStop(0, 'rgba(255,245,180,0.85)'); sunG.addColorStop(0.4, 'rgba(255,220,100,0.35)'); sunG.addColorStop(1, 'rgba(255,200,60,0)');
+  cx.fillStyle = sunG; cx.fillRect(0, 0, 640, 200);
+  cx.fillStyle = '#7a8c50'; cx.beginPath(); cx.moveTo(0, 145);
+  for (let x = 0; x <= 640; x += 15) cx.lineTo(x, 140 + Math.sin(x * 0.022) * 22 + Math.random() * 9);
+  cx.lineTo(640, 200); cx.lineTo(0, 200); cx.closePath(); cx.fill();
+  const field = cx.createLinearGradient(0, 168, 0, 400);
+  field.addColorStop(0, '#c8a040'); field.addColorStop(0.45, '#9a7028'); field.addColorStop(1, '#6a4018');
+  cx.fillStyle = field; cx.fillRect(0, 168, 640, 232);
+  for (let i = 0; i < 700; i++) {
+    const gx = Math.random() * 640, gy = 168 + Math.random() * 200, r = 1 + Math.random() * 9;
+    cx.fillStyle = `rgba(${200+Math.random()*55},${140+Math.random()*50},${30+Math.random()*40},${0.12+Math.random()*0.4})`;
+    cx.beginPath(); cx.ellipse(gx, gy, r * 2.2, r * 0.7, Math.random() * Math.PI, 0, Math.PI * 2); cx.fill();
   }
-  for (let i = 0; i < 35; i++) {
-    cx.fillStyle = `rgba(215,208,194,${0.15 + Math.random() * 0.25})`;
-    cx.fillRect(Math.random() * 512, Math.random() * 130, 50 + Math.random() * 100, 5 + Math.random() * 16);
+  for (let i = 0; i < 10; i++) {
+    const tx = 40 + Math.random() * 560, ty = 118 + Math.random() * 28, th = 22 + Math.random() * 35;
+    cx.fillStyle = `rgba(${40+Math.random()*30},${60+Math.random()*30},${30+Math.random()*20},0.55)`;
+    cx.beginPath(); cx.ellipse(tx, ty, 10 + Math.random() * 8, th * 0.55, 0, 0, Math.PI * 2); cx.fill();
   }
+  for (let i = 0; i < 22; i++) {
+    cx.fillStyle = `rgba(240,232,210,${0.08+Math.random()*0.18})`;
+    cx.beginPath(); cx.ellipse(Math.random()*640, Math.random()*130, 70+Math.random()*90, 8+Math.random()*14, 0, 0, Math.PI*2); cx.fill();
+  }
+  const vig = cx.createRadialGradient(320, 200, 60, 320, 200, 380);
+  vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(15,8,0,0.32)');
+  cx.fillStyle = vig; cx.fillRect(0, 0, 640, 400);
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
 // ── Materials ─────────────────────────────────────────────────────────────────
 
-function stdMat(color: number, rough: number, metal = 0, envI = 0.5) {
-  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: envI });
+function physMat(color: number | string, rough: number, metal = 0): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: 0.7 });
+}
+
+function fabricMat(col: number): THREE.MeshPhysicalMaterial {
+  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.83, metalness: 0, envMapIntensity: 0.3 });
+  mat.sheen = 0.55;
+  mat.sheenRoughness = 0.58;
+  mat.sheenColor.setHex(col);
+  return mat;
+}
+
+function woodPhysMat(col: number, rough = 0.55): THREE.MeshPhysicalMaterial {
+  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0, envMapIntensity: 0.7 });
+  mat.clearcoat = 0.28;
+  mat.clearcoatRoughness = 0.4;
+  return mat;
+}
+
+function metalMat(col: number, rough = 0.18): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0.94, envMapIntensity: 1.6 });
 }
 
 // ── Furniture ─────────────────────────────────────────────────────────────────
 
 function sofa(w: number, col: number): THREE.Group {
-  const g = new THREE.Group(), f = stdMat(col, 0.88);
-  const box = (gx: number, gy: number, gz: number, sx: number, sy: number, sz: number, m = f) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m);
-    mesh.position.set(gx, gy, gz); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
-  };
-  box(0, 0.21, 0, w, 0.42, 0.80);
-  box(0, 0.60, -0.31, w, 0.56, 0.18);
-  box(-(w / 2 + 0.09), 0.27, 0, 0.18, 0.52, 0.80);
-  box((w / 2 + 0.09), 0.27, 0, 0.18, 0.52, 0.80);
-  const legM = stdMat(0x2a1a08, 0.4, 0.1);
-  [[-w / 2 + 0.12, 0.35], [-w / 2 + 0.12, -0.34], [w / 2 - 0.12, 0.35], [w / 2 - 0.12, -0.34]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.1, 7), legM);
-    leg.position.set(lx, -0.04, lz); g.add(leg);
+  const g = new THREE.Group();
+  const fab = fabricMat(col);
+  const legM = woodPhysMat(0x2a1a08, 0.35);
+
+  // base frame
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.13, 0.86), physMat(0x1a1208, 0.75));
+  base.position.y = 0.065; base.castShadow = true; base.receiveShadow = true; g.add(base);
+
+  // seat cushions
+  const n = w > 2.0 ? 3 : 2;
+  const cw = (w - 0.24) / n - 0.025;
+  for (let i = 0; i < n; i++) {
+    const cx2 = -w / 2 + 0.12 + (i + 0.5) * ((w - 0.24) / n);
+    const c = new THREE.Mesh(new RoundedBoxGeometry(cw, 0.22, 0.58, 3, 0.045), fab);
+    c.position.set(cx2, 0.24, 0.04); c.castShadow = true; g.add(c);
+  }
+
+  // back cushions
+  const nb = w > 2.0 ? 3 : 2;
+  const bw = (w - 0.26) / nb - 0.025;
+  for (let i = 0; i < nb; i++) {
+    const bx = -w / 2 + 0.13 + (i + 0.5) * ((w - 0.26) / nb);
+    const bc = new THREE.Mesh(new RoundedBoxGeometry(bw, 0.50, 0.22, 3, 0.05), fab);
+    bc.position.set(bx, 0.50, -0.32); bc.castShadow = true; g.add(bc);
+  }
+
+  // arms
+  [-w / 2 + 0.07, w / 2 - 0.07].forEach(ax => {
+    const arm = new THREE.Mesh(new RoundedBoxGeometry(0.14, 0.14, 0.82, 3, 0.04), fab);
+    arm.position.set(ax, 0.40, 0); arm.castShadow = true; g.add(arm);
+  });
+
+  // legs
+  [[-w / 2 + 0.13, 0.33], [-w / 2 + 0.13, -0.33], [w / 2 - 0.13, 0.33], [w / 2 - 0.13, -0.33]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.020, 0.14, 10), legM);
+    leg.position.set(lx, -0.035, lz); leg.castShadow = true; g.add(leg);
   });
   return g;
 }
 
 function armchair(col: number): THREE.Group {
-  const g = new THREE.Group(), f = stdMat(col, 0.88);
-  const box = (gx: number, gy: number, gz: number, sx: number, sy: number, sz: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), f);
-    m.position.set(gx, gy, gz); m.castShadow = true; g.add(m);
-  };
-  box(0, 0.22, 0, 0.84, 0.44, 0.82);
-  box(0, 0.64, -0.32, 0.84, 0.60, 0.18);
-  box(-0.51, 0.27, 0, 0.18, 0.50, 0.82);
-  box(0.51, 0.27, 0, 0.18, 0.50, 0.82);
+  const g = new THREE.Group();
+  const fab = fabricMat(col);
+  const legM = woodPhysMat(0x2a1a08, 0.35);
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.12, 0.84), physMat(0x1a1208, 0.75));
+  base.position.y = 0.06; base.castShadow = true; base.receiveShadow = true; g.add(base);
+
+  const seat = new THREE.Mesh(new RoundedBoxGeometry(0.74, 0.22, 0.62, 3, 0.05), fab);
+  seat.position.set(0, 0.23, 0.03); seat.castShadow = true; g.add(seat);
+
+  const back = new THREE.Mesh(new RoundedBoxGeometry(0.74, 0.58, 0.22, 3, 0.06), fab);
+  back.position.set(0, 0.56, -0.31); back.castShadow = true; g.add(back);
+
+  [-0.48, 0.48].forEach(ax => {
+    const arm = new THREE.Mesh(new RoundedBoxGeometry(0.16, 0.13, 0.84, 3, 0.04), fab);
+    arm.position.set(ax, 0.40, 0); arm.castShadow = true; g.add(arm);
+  });
+
+  [[-0.32, 0.30], [-0.32, -0.30], [0.32, 0.30], [0.32, -0.30]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.018, 0.12, 10), legM);
+    leg.position.set(lx, -0.0, lz); leg.castShadow = true; g.add(leg);
+  });
   return g;
 }
 
 function coffeeTable(col: number, legCol: number): THREE.Group {
   const g = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.06, 0.60), stdMat(col, 0.55, 0, 0.4));
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.055, 0.60), woodPhysMat(col, 0.30));
   top.position.y = 0.44; top.castShadow = true; top.receiveShadow = true; g.add(top);
-  const legM = stdMat(legCol, 0.25, 0.6, 0.8);
+  const bot = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.040, 0.44), woodPhysMat(col, 0.40));
+  bot.position.y = 0.14; bot.receiveShadow = true; g.add(bot);
+  const legM = metalMat(legCol, 0.22);
   [[-0.48, 0.26], [-0.48, -0.24], [0.48, 0.26], [0.48, -0.24]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.018, 0.44, 8), legM);
-    leg.position.set(lx, 0.22, lz); g.add(leg);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.016, 0.44, 10), legM);
+    leg.position.set(lx, 0.22, lz); leg.castShadow = true; g.add(leg);
   });
   return g;
 }
 
 function sideboard(col: number, handleCol: number): THREE.Group {
-  const g = new THREE.Group(), wood = stdMat(col, 0.65);
+  const g = new THREE.Group();
+  const wood = woodPhysMat(col, 0.60);
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.52, 0.42), wood);
   body.position.y = 0.56; body.castShadow = true; body.receiveShadow = true; g.add(body);
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.69, 0.04, 0.46), stdMat(col, 0.58));
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.69, 0.04, 0.46), woodPhysMat(col, 0.50));
   top.position.y = 0.84; top.castShadow = true; g.add(top);
-  const legM = stdMat(Math.round(col * 0.85), 0.55);
+  const legM = woodPhysMat(Math.round(col * 0.85), 0.55);
   [[-0.75, 0.18], [-0.75, -0.18], [0.75, 0.18], [0.75, -0.18]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.27, 0.04), legM);
     leg.position.set(lx, 0.135, lz); g.add(leg);
   });
-  const hM = stdMat(handleCol, 0.22, 0.75, 1.1);
+  const hM = metalMat(handleCol, 0.20);
   [-0.54, 0, 0.54].forEach(dx => {
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.012, 0.012), hM);
     handle.position.set(dx, 0.56, 0.225); g.add(handle);
   });
-  const divM = stdMat(Math.round(col * 0.88), 0.7);
+  const divM = woodPhysMat(Math.round(col * 0.88), 0.7);
   [-0.55, 0.55].forEach(dx => {
     const div = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.50, 0.01), divM);
     div.position.set(dx, 0.56, 0.218); g.add(div);
@@ -195,12 +285,12 @@ function sideboard(col: number, handleCol: number): THREE.Group {
 }
 
 function stool(col: number): THREE.Group {
-  const g = new THREE.Group(), m = stdMat(col, 0.32, 0.1);
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 16), m);
+  const g = new THREE.Group(), m = metalMat(col, 0.30);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 18), m);
   top.position.y = 0.43; top.castShadow = true; g.add(top);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2;
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.012, 0.43, 6), m);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.012, 0.43, 7), m);
     leg.position.set(Math.cos(a) * 0.14, 0.215, Math.sin(a) * 0.14);
     leg.rotation.z = -Math.cos(a) * 0.17; leg.rotation.x = -Math.sin(a) * 0.17;
     leg.castShadow = true; g.add(leg);
@@ -209,44 +299,44 @@ function stool(col: number): THREE.Group {
 }
 
 function arcLamp(col: number, shadeCol: number): THREE.Group {
-  const g = new THREE.Group(), metal = stdMat(col, 0.22, 0.78, 1.1);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.27, 0.065, 16), metal);
+  const g = new THREE.Group(), metal = metalMat(col, 0.18);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.27, 0.065, 18), metal);
   base.position.y = 0.033; g.add(base);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.65, 8), metal);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.65, 10), metal);
   pole.position.set(0, 0.86, 0); pole.castShadow = true; g.add(pole);
   const arc = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 1.0, 8), metal);
   arc.position.set(0.38, 1.80, 0); arc.rotation.z = -0.44; arc.castShadow = true; g.add(arc);
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.22, 20, 1, true), stdMat(shadeCol, 0.9));
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.22, 22, 1, true), physMat(shadeCol, 0.88));
   shade.position.set(0.82, 2.26, 0); shade.rotation.x = Math.PI; g.add(shade);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 2.8, roughness: 0.04 }));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.2, roughness: 0.04 }));
   bulb.position.set(0.82, 2.17, 0); g.add(bulb);
   return g;
 }
 
 function floorLamp(col: number, shadeCol: number): THREE.Group {
-  const g = new THREE.Group(), metal = stdMat(col, 0.3, 0.65, 0.9);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.06, 16), metal);
+  const g = new THREE.Group(), metal = metalMat(col, 0.28);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.06, 18), metal);
   base.position.y = 0.03; g.add(base);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.55, 8), metal);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.55, 10), metal);
   pole.position.y = 0.82; pole.castShadow = true; g.add(pole);
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.38, 16, 1, true), stdMat(shadeCol, 0.85));
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.38, 18, 1, true), physMat(shadeCol, 0.86));
   shade.position.y = 1.72; shade.rotation.x = Math.PI; g.add(shade);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 2.5, roughness: 0.05 }));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 2.8, roughness: 0.05 }));
   bulb.position.y = 1.62; g.add(bulb);
   return g;
 }
 
 function plant(leafCol: number): THREE.Group {
   const g = new THREE.Group();
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.17, 0.36, 14), stdMat(0x9a6042, 0.82));
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.17, 0.36, 16), woodPhysMat(0x9a6042, 0.80));
   pot.position.y = 0.18; pot.castShadow = true; pot.receiveShadow = true; g.add(pot);
-  const soil = new THREE.Mesh(new THREE.CircleGeometry(0.21, 14), stdMat(0x3a2010, 0.95));
+  const soil = new THREE.Mesh(new THREE.CircleGeometry(0.21, 16), physMat(0x3a2010, 0.96));
   soil.rotation.x = -Math.PI / 2; soil.position.y = 0.37; g.add(soil);
-  const leafM = stdMat(leafCol, 0.9);
+  const leafM = physMat(leafCol, 0.88);
   [{ r: 0.40, h: 0.52, y: 0.70 }, { r: 0.32, h: 0.48, y: 1.06 }, { r: 0.23, h: 0.42, y: 1.40 }, { r: 0.14, h: 0.34, y: 1.68 }].forEach(({ r, h, y }) => {
-    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 11), leafM);
+    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 13), leafM);
     c.position.y = y; c.castShadow = true; g.add(c);
   });
   return g;
@@ -254,54 +344,57 @@ function plant(leafCol: number): THREE.Group {
 
 function diningTable(col: number): THREE.Group {
   const g = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.90), stdMat(col, 0.6));
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.90), woodPhysMat(col, 0.52));
   top.position.y = 0.75; top.castShadow = true; top.receiveShadow = true; g.add(top);
-  const wM = stdMat(col, 0.65);
+  const wM = woodPhysMat(col, 0.60);
   [[-0.82, 0.38], [-0.82, -0.38], [0.82, 0.38], [0.82, -0.38]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.75, 0.06), wM);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.028, 0.75, 10), wM);
     leg.position.set(lx, 0.375, lz); leg.castShadow = true; g.add(leg);
   });
   return g;
 }
 
 function diningChair(col: number): THREE.Group {
-  const g = new THREE.Group(), m = stdMat(col, 0.7);
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.04, 0.44), m);
+  const g = new THREE.Group();
+  const m = fabricMat(col);
+  const legM = woodPhysMat(0x2a1a08, 0.38);
+  const seat = new THREE.Mesh(new RoundedBoxGeometry(0.46, 0.06, 0.44, 2, 0.03), m);
   seat.position.y = 0.46; seat.castShadow = true; g.add(seat);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.52, 0.04), m);
-  back.position.set(0, 0.72, -0.2); back.castShadow = true; g.add(back);
-  [[-0.2, 0.2], [-0.2, -0.2], [0.2, 0.2], [0.2, -0.2]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.014, 0.46, 6), m);
+  const back = new THREE.Mesh(new RoundedBoxGeometry(0.44, 0.50, 0.06, 2, 0.03), m);
+  back.position.set(0, 0.72, -0.19); back.castShadow = true; g.add(back);
+  [[-0.18, 0.18], [-0.18, -0.18], [0.18, 0.18], [0.18, -0.18]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.014, 0.46, 8), legM);
     leg.position.set(lx, 0.23, lz); g.add(leg);
   });
   return g;
 }
 
 function bed(col: number, pilCol: number): THREE.Group {
-  const g = new THREE.Group(), frame = stdMat(col, 0.7);
+  const g = new THREE.Group();
+  const frame = woodPhysMat(col, 0.65);
   const base = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.26, 1.9), frame);
   base.position.y = 0.13; base.castShadow = true; base.receiveShadow = true; g.add(base);
-  const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.2, 1.78), stdMat(0xf0ece6, 0.92));
+  const mattress = new THREE.Mesh(new RoundedBoxGeometry(1.88, 0.20, 1.78, 2, 0.04), physMat(0xf0ece6, 0.92));
   mattress.position.y = 0.36; mattress.castShadow = true; g.add(mattress);
-  const duvet = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.1, 1.40), stdMat(0xffffff, 0.95));
+  const duvet = new THREE.Mesh(new RoundedBoxGeometry(1.86, 0.10, 1.38, 2, 0.04), physMat(0xffffff, 0.95));
   duvet.position.set(0, 0.41, 0.18); duvet.castShadow = true; g.add(duvet);
-  const headboard = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.7, 0.1), frame);
+  const headboard = new THREE.Mesh(new RoundedBoxGeometry(2.0, 0.70, 0.12, 2, 0.05), frame);
   headboard.position.set(0, 0.61, -0.95); headboard.castShadow = true; g.add(headboard);
-  const pM = stdMat(pilCol, 0.92);
+  const pM = fabricMat(pilCol);
   [-0.46, 0.46].forEach(px => {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.14, 0.42), pM);
-    p.position.set(px, 0.5, -0.62); p.rotation.x = 0.07; p.castShadow = true; g.add(p);
+    const p = new THREE.Mesh(new RoundedBoxGeometry(0.62, 0.14, 0.42, 2, 0.04), pM);
+    p.position.set(px, 0.50, -0.62); p.rotation.x = 0.07; p.castShadow = true; g.add(p);
   });
   return g;
 }
 
 function wardrobe(col: number): THREE.Group {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, 0.58), stdMat(col, 0.7));
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, 0.58), woodPhysMat(col, 0.65));
   body.position.y = 1.1; body.castShadow = true; body.receiveShadow = true; g.add(body);
-  const hM = stdMat(0x909090, 0.25, 0.8, 1.0);
+  const hM = metalMat(0x909090, 0.22);
   [-0.46, 0.46].forEach(dx => {
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 8), hM);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 10), hM);
     handle.rotation.x = Math.PI / 2;
     handle.position.set(dx > 0 ? dx - 0.08 : dx + 0.08, 1.1, 0.305); g.add(handle);
   });
@@ -310,13 +403,13 @@ function wardrobe(col: number): THREE.Group {
 
 function tvUnit(screenCol: number, cabinetCol: number): THREE.Group {
   const g = new THREE.Group();
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.48, 0.40), stdMat(cabinetCol, 0.68));
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.48, 0.40), woodPhysMat(cabinetCol, 0.62));
   cab.position.y = 0.24; cab.castShadow = true; cab.receiveShadow = true; g.add(cab);
   [[-0.7, 0.16], [0.7, 0.16], [-0.7, -0.16], [0.7, -0.16]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.08, 6), stdMat(0x202020, 0.3, 0.6));
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.08, 8), metalMat(0x202020, 0.28));
     leg.position.set(lx, 0.04, lz); g.add(leg);
   });
-  const screen = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.80, 0.055), stdMat(screenCol, 0.28, 0.55));
+  const screen = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.80, 0.055), physMat(screenCol, 0.22, 0.55));
   screen.position.y = 1.01; screen.castShadow = true; g.add(screen);
   const display = new THREE.Mesh(new THREE.PlaneGeometry(1.26, 0.70),
     new THREE.MeshStandardMaterial({ color: 0x060c14, emissive: 0x060c14, emissiveIntensity: 0.5, roughness: 0.02 }));
@@ -325,7 +418,7 @@ function tvUnit(screenCol: number, cabinetCol: number): THREE.Group {
 }
 
 function bookshelf(col: number): THREE.Group {
-  const g = new THREE.Group(), wood = stdMat(col, 0.66);
+  const g = new THREE.Group(), wood = woodPhysMat(col, 0.60);
   [-0.58, 0.58].forEach(x => {
     const s = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.1, 0.32), wood);
     s.position.set(x, 1.05, 0); s.castShadow = true; g.add(s);
@@ -334,7 +427,7 @@ function bookshelf(col: number): THREE.Group {
     const s = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.32), wood);
     s.position.y = y; s.castShadow = true; s.receiveShadow = true; g.add(s);
   });
-  const back = new THREE.Mesh(new THREE.BoxGeometry(1.16, 2.06, 0.02), stdMat(Math.round(col * 0.85), 0.75));
+  const back = new THREE.Mesh(new THREE.BoxGeometry(1.16, 2.06, 0.02), woodPhysMat(Math.round(col * 0.85), 0.75));
   back.position.set(0, 1.05, -0.15); g.add(back);
   return g;
 }
@@ -359,7 +452,7 @@ function buildFurniture(item: FurnitureItem): THREE.Group {
     case 'shelf':    return bookshelf(p);
     default: {
       const g = new THREE.Group();
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), stdMat(p, 0.7));
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), physMat(p, 0.7));
       m.position.y = 0.4; m.castShadow = true; g.add(m); return g;
     }
   }
@@ -373,6 +466,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
   const rendererRef    = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef    = useRef<OrbitControls | null>(null);
   const cameraRef      = useRef<THREE.PerspectiveCamera | null>(null);
+  const composerRef    = useRef<EffectComposer | null>(null);
   const placedRef      = useRef<PlacedItem[]>([]);
   const rafRef         = useRef<number>(0);
   const wallMatRefs    = useRef<Record<WallId, THREE.MeshStandardMaterial | null>>({ back: null, left: null, right: null, ceiling: null });
@@ -417,7 +511,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
@@ -433,52 +527,68 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     controls.maxPolarAngle = Math.PI / 2 + 0.1; controls.target.set(0, 0.8, 0);
     controlsRef.current = controls;
 
-    scene.add(new THREE.AmbientLight(0xfff4e0, 0.55));
-    const winLight = new THREE.DirectionalLight(0xfff8ee, 4.2);
+    // Post-processing
+    const composer = new EffectComposer(renderer);
+    composerRef.current = composer;
+    composer.addPass(new RenderPass(scene, camera));
+    const ssao = new SSAOPass(scene, camera, W, H);
+    ssao.kernelRadius = 0.6;
+    ssao.minDistance = 0.002;
+    ssao.maxDistance = 0.08;
+    composer.addPass(ssao);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.18, 0.5, 0.82);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xfff4e0, 0.50));
+    const winLight = new THREE.DirectionalLight(0xfff8ee, 4.5);
     winLight.position.set(7, 5, 1); winLight.target.position.set(0, 0, 0);
     winLight.castShadow = true; winLight.shadow.mapSize.set(2048, 2048);
     winLight.shadow.camera.near = 2; winLight.shadow.camera.far = 22;
     winLight.shadow.camera.left = -6; winLight.shadow.camera.right = 6;
     winLight.shadow.camera.top = 5; winLight.shadow.camera.bottom = -5;
-    winLight.shadow.bias = -0.001; winLight.shadow.normalBias = 0.025;
+    winLight.shadow.bias = -0.001; winLight.shadow.normalBias = 0.02;
     scene.add(winLight); scene.add(winLight.target);
     const ceilLight = new THREE.PointLight(0xfff8e8, 1.8, 10);
     ceilLight.position.set(0, 2.88, 0.4);
     ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(512, 512); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
-    const fill = new THREE.DirectionalLight(0xd8e8ff, 0.4);
+    const fill = new THREE.DirectionalLight(0xd8e8ff, 0.35);
     fill.position.set(-3, 3, 5); scene.add(fill);
 
     const RW = 7, RH = 3, RD = 6.5;
     const plasterN = makePlasterNormal();
-    const mkWallMat = (hex: string) => new THREE.MeshStandardMaterial({
+    const mkWallMat = (hex: string) => new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(hex), roughness: 0.90, metalness: 0,
-      normalMap: plasterN, normalScale: new THREE.Vector2(0.28, 0.28), envMapIntensity: 0.15,
-    });
+      normalMap: plasterN, normalScale: new THREE.Vector2(0.22, 0.22), envMapIntensity: 0.12,
+    } as THREE.MeshPhysicalMaterialParameters);
 
     const backMat  = mkWallMat('#f7f4f0');
     const leftMat  = mkWallMat('#f7f4f0');
     const rightMat = mkWallMat('#f7f4f0');
-    const ceilMat  = new THREE.MeshStandardMaterial({ color: new THREE.Color('#fafaf8'), roughness: 0.85, envMapIntensity: 0.12 });
-    wallMatRefs.current = { back: backMat, left: leftMat, right: rightMat, ceiling: ceilMat };
+    const ceilMat  = new THREE.MeshPhysicalMaterial({ color: new THREE.Color('#fafaf8'), roughness: 0.88, envMapIntensity: 0.10 } as THREE.MeshPhysicalMaterialParameters);
+    wallMatRefs.current = { back: backMat as unknown as THREE.MeshStandardMaterial, left: leftMat as unknown as THREE.MeshStandardMaterial, right: rightMat as unknown as THREE.MeshStandardMaterial, ceiling: ceilMat as unknown as THREE.MeshStandardMaterial };
 
     const woodTex  = makeWoodTex();
-    const floorMat = new THREE.MeshStandardMaterial({ map: woodTex, color: new THREE.Color('#6b3c18'), roughness: 0.60, metalness: 0, envMapIntensity: 0.35 });
-    floorMatRef.current = floorMat;
+    const floorMat = new THREE.MeshPhysicalMaterial({ map: woodTex, color: new THREE.Color('#6b3c18'), roughness: 0.38, metalness: 0, envMapIntensity: 0.65 } as THREE.MeshPhysicalMaterialParameters);
+    (floorMat as THREE.MeshPhysicalMaterial).clearcoat = 0.35;
+    (floorMat as THREE.MeshPhysicalMaterial).clearcoatRoughness = 0.28;
+    floorMatRef.current = floorMat as unknown as THREE.MeshStandardMaterial;
     const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), floorMat);
     floorMesh.rotation.x = -Math.PI / 2; floorMesh.receiveShadow = true; scene.add(floorMesh);
 
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), ceilMat);
     ceil.rotation.x = Math.PI / 2; ceil.position.y = RH; scene.add(ceil);
 
-    const fixtM = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.5, metalness: 0.25 });
-    const fixt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.055, 16), fixtM);
+    const fixtM = new THREE.MeshPhysicalMaterial({ color: 0xe8e4da, roughness: 0.45, metalness: 0.30 } as THREE.MeshPhysicalMaterialParameters);
+    const fixt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.055, 18), fixtM);
     fixt.position.set(0, RH - 0.028, 0.4); scene.add(fixt);
-    const bulbGlob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.0, roughness: 0.04 }));
+    const bulbGlob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.2, roughness: 0.04 }));
     bulbGlob.position.set(0, RH - 0.1, 0.4); scene.add(bulbGlob);
 
-    const addWall = (w: number, h: number, mat: THREE.MeshStandardMaterial, pos: [number, number, number], ry: number, id: WallId) => {
+    const addWall = (w: number, h: number, mat: THREE.MeshPhysicalMaterial, pos: [number, number, number], ry: number, id: WallId) => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(...pos); mesh.rotation.y = ry; mesh.receiveShadow = true;
       scene.add(mesh); wallMeshToId.current.set(mesh, id);
@@ -487,8 +597,8 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     addWall(RD, RH, leftMat,  [-RW / 2, RH / 2, 0], Math.PI / 2,  'left');
     addWall(RD, RH, rightMat, [RW / 2,  RH / 2, 0], -Math.PI / 2, 'right');
 
-    // Neoclassical panel moldings
-    const moldM = new THREE.MeshStandardMaterial({ color: 0xfaf8f4, roughness: 0.48, envMapIntensity: 0.55 });
+    // Panel moldings on back wall
+    const moldM = new THREE.MeshPhysicalMaterial({ color: 0xfaf8f4, roughness: 0.44, envMapIntensity: 0.65 } as THREE.MeshPhysicalMaterialParameters);
     const addPanelFrame = (cx: number, cy: number, pw: number, ph: number) => {
       const z = -RD / 2 + 0.026, th = 0.03, d = 0.016;
       const bar = (bx: number, by: number, bw: number, bh: number) => {
@@ -506,7 +616,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
 
     // Landscape painting
     const artTex = makeArtTex();
-    const artFrameM = new THREE.MeshStandardMaterial({ color: 0xf6f2ec, roughness: 0.52, envMapIntensity: 0.4 });
+    const artFrameM = new THREE.MeshPhysicalMaterial({ color: 0xf6f2ec, roughness: 0.44, envMapIntensity: 0.5 } as THREE.MeshPhysicalMaterialParameters);
     const artFrame = new THREE.Mesh(new THREE.BoxGeometry(1.96, 1.24, 0.04), artFrameM);
     artFrame.position.set(0, 2.06, -RD / 2 + 0.055); scene.add(artFrame);
     const artMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.76, 1.04),
@@ -515,10 +625,10 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
 
     // Right wall window
     const rWinGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.1),
-      new THREE.MeshStandardMaterial({ color: 0xc4dcf4, emissive: 0x98c4e0, emissiveIntensity: 2.2, transparent: true, opacity: 0.48, roughness: 0, metalness: 0.02 }));
+      new THREE.MeshStandardMaterial({ color: 0xc4dcf4, emissive: 0x98c4e0, emissiveIntensity: 2.5, transparent: true, opacity: 0.46, roughness: 0, metalness: 0.02 }));
     rWinGlass.rotation.y = -Math.PI / 2;
     rWinGlass.position.set(RW / 2 - 0.07, 1.72, 0.8); scene.add(rWinGlass);
-    const rWinFrameM = new THREE.MeshStandardMaterial({ color: 0xf0ece5, roughness: 0.4, metalness: 0.06 });
+    const rWinFrameM = new THREE.MeshPhysicalMaterial({ color: 0xf0ece5, roughness: 0.38, metalness: 0.06 } as THREE.MeshPhysicalMaterialParameters);
     const rWinFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.18, 2.88), rWinFrameM);
     rWinFrame.position.set(RW / 2 - 0.04, 1.72, 0.8); scene.add(rWinFrame);
     [0, 1].forEach(i => {
@@ -527,10 +637,10 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     });
 
     // Curtain rod + camel curtains
-    const rodM = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.18, metalness: 0.9 });
-    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 8), rodM);
+    const rodM = metalMat(0x1e1e1e, 0.16);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 10), rodM);
     rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
-    const curtM = new THREE.MeshStandardMaterial({ color: 0xb89870, roughness: 0.95, side: THREE.FrontSide });
+    const curtM = new THREE.MeshPhysicalMaterial({ color: 0xb89870, roughness: 0.94, side: THREE.FrontSide } as THREE.MeshPhysicalMaterialParameters);
     [[2.3], [-0.75]].forEach(([cz]) => {
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.09, RH - 0.08, 1.3), curtM);
       c.position.set(RW / 2 - 0.16, (RH - 0.08) / 2 + 0.04, cz);
@@ -538,7 +648,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     });
 
     // Skirting boards
-    const skirtM = new THREE.MeshStandardMaterial({ color: 0xf5f2ee, roughness: 0.52, envMapIntensity: 0.35 });
+    const skirtM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.48, envMapIntensity: 0.40 } as THREE.MeshPhysicalMaterialParameters);
     const skirt = (w: number, p: [number, number, number], ry: number) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.025), skirtM);
       m.position.set(...p); m.rotation.y = ry; m.receiveShadow = true; scene.add(m);
@@ -548,7 +658,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     skirt(RD, [RW / 2 - 0.013, 0.05, 0], Math.PI / 2);
 
     // Crown molding
-    const crownM = new THREE.MeshStandardMaterial({ color: 0xfafaf8, roughness: 0.62 });
+    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xfafaf8, roughness: 0.58 } as THREE.MeshPhysicalMaterialParameters);
     const crown = (w: number, p: [number, number, number], ry: number) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.058, 0.058), crownM);
       m.position.set(...p); m.rotation.y = ry; scene.add(m);
@@ -557,7 +667,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     crown(RD, [-RW / 2 + 0.03, RH - 0.03, 0], Math.PI / 2);
     crown(RD, [RW / 2 - 0.03, RH - 0.03, 0], Math.PI / 2);
 
-    // BoxHelper
+    // BoxHelper for selection
     const placeholder = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001));
     const boxHelper = new THREE.BoxHelper(placeholder, 0x00d4ff);
     boxHelper.visible = false; scene.add(boxHelper); boxHelperRef.current = boxHelper;
@@ -659,11 +769,12 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
 
     const onResize = () => {
       const w = canvas.parentElement?.clientWidth || 800, h = canvas.parentElement?.clientHeight || 600;
-      camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h); composer.setSize(w, h);
     };
     window.addEventListener('resize', onResize);
 
-    const animate = () => { rafRef.current = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
+    const animate = () => { rafRef.current = requestAnimationFrame(animate); controls.update(); composer.render(); };
     animate();
 
     return () => {
@@ -671,7 +782,8 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
       canvas.removeEventListener('pointerdown', onPD);
       canvas.removeEventListener('pointermove', onPM);
       canvas.removeEventListener('pointerup', onPU);
-      cancelAnimationFrame(rafRef.current); renderer.dispose();
+      cancelAnimationFrame(rafRef.current);
+      composer.dispose(); renderer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
