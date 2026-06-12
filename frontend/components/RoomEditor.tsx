@@ -1,5 +1,6 @@
 'use client';
 
+
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -532,6 +533,81 @@ function bookStack(): THREE.Group {
   return g;
 }
 
+// Neoclassical chandelier with 6 arms, candle stubs, glowing bulbs, pendant drop
+function chandelier(col: number): THREE.Group {
+  const g = new THREE.Group();
+  const gold = metalMat(col, 0.12);
+  const ivory = new THREE.MeshPhysicalMaterial({ color: 0xf5f0e6, roughness: 0.88, metalness: 0 } as THREE.MeshPhysicalMaterialParameters);
+  const bulbM = new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.8, roughness: 0.04 });
+
+  // Ceiling canopy
+  const canopy = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.17, 0.055, 20), gold);
+  canopy.position.y = 0; g.add(canopy);
+
+  // Vertical drop rod
+  const dropRod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.24, 8), gold);
+  dropRod.position.y = -0.15; g.add(dropRod);
+
+  // Central body tapered
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.132, 0.28, 20), gold);
+  body.position.y = -0.40; g.add(body);
+
+  // Bobeche ring at base
+  const bobeche = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.018, 24), gold);
+  bobeche.position.y = -0.555; g.add(bobeche);
+
+  // 6 arms
+  const N = 6, tilt = 0.13, armLen = 0.40;
+  for (let i = 0; i < N; i++) {
+    const az = (i / N) * Math.PI * 2;
+    const aG = new THREE.Group();
+    aG.rotation.y = az;
+
+    // rotation.z = -(PI/2 + tilt) → arm points in +X slightly downward
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, armLen, 8), gold);
+    arm.rotation.z = -(Math.PI / 2 + tilt);
+    const cx2 = 0.17 + (armLen / 2) * Math.cos(tilt);
+    const cy2 = -0.555 - (armLen / 2) * Math.sin(tilt);
+    arm.position.set(cx2, cy2, 0);
+    aG.add(arm);
+
+    const ex = 0.17 + armLen * Math.cos(tilt);
+    const ey = -0.555 - armLen * Math.sin(tilt);
+
+    // Vertical drop hanging from arm end
+    const hangDrop = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.10, 8), gold);
+    hangDrop.position.set(ex, ey - 0.05, 0);
+    aG.add(hangDrop);
+
+    // Cup at bottom of drop
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.014, 0.036, 14), gold);
+    cup.position.set(ex, ey - 0.118, 0);
+    aG.add(cup);
+
+    // Candle stub
+    const candleStub = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.068, 10), ivory);
+    candleStub.position.set(ex, ey - 0.066, 0);
+    aG.add(candleStub);
+
+    // Glowing bulb at candle top
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.020, 10, 8), bulbM);
+    bulb.scale.y = 1.45;
+    bulb.position.set(ex, ey - 0.012, 0);
+    aG.add(bulb);
+
+    g.add(aG);
+  }
+
+  // Central pendant drop below body
+  const pStem = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.12, 8), gold);
+  pStem.position.y = -0.62; g.add(pStem);
+  const pendant = new THREE.Mesh(new THREE.SphereGeometry(0.052, 14, 12), gold);
+  pendant.scale.y = 1.65;
+  pendant.position.y = -0.73; g.add(pendant);
+
+  return g;
+}
+
 function buildFurniture(item: FurnitureItem): THREE.Group {
   const { id, primary: p, secondary: s = 0x888880 } = item;
   switch (id) {
@@ -665,8 +741,8 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     winLight.shadow.camera.top = 5; winLight.shadow.camera.bottom = -5;
     winLight.shadow.bias = -0.001; winLight.shadow.normalBias = 0.02;
     scene.add(winLight); scene.add(winLight.target);
-    const ceilLight = new THREE.PointLight(0xfff8e8, 1.8, 10);
-    ceilLight.position.set(0, 2.88, 0.4);
+    const ceilLight = new THREE.PointLight(0xfff4d8, 2.4, 11);
+    ceilLight.position.set(0, 2.38, 0.4);
     ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(512, 512); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
     const fill = new THREE.DirectionalLight(0xd8e8ff, 0.35);
@@ -707,12 +783,20 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), ceilMat);
     ceil.rotation.x = Math.PI / 2; ceil.position.y = RH; scene.add(ceil);
 
-    const fixtM = new THREE.MeshPhysicalMaterial({ color: 0xe8e4da, roughness: 0.45, metalness: 0.30 } as THREE.MeshPhysicalMaterialParameters);
-    const fixt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.055, 18), fixtM);
-    fixt.position.set(0, RH - 0.028, 0.4); scene.add(fixt);
-    const bulbGlob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10),
-      new THREE.MeshStandardMaterial({ color: 0xfffde8, emissive: 0xfffde8, emissiveIntensity: 3.2, roughness: 0.04 }));
-    bulbGlob.position.set(0, RH - 0.1, 0.4); scene.add(bulbGlob);
+    // Neoclassical chandelier
+    const chand = chandelier(0xc8a028);
+    chand.position.set(0, RH - 0.028, 0.4);
+    chand.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = false; } });
+    scene.add(chand);
+
+    // Ceiling rosette (concentric plaster rings around chandelier)
+    const rosetteM = new THREE.MeshPhysicalMaterial({ color: 0xfafaf8, roughness: 0.52, envMapIntensity: 0.22 } as THREE.MeshPhysicalMaterialParameters);
+    [0.30, 0.48, 0.68].forEach((r, i) => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.014 - i * 0.003, 8, 36), rosetteM);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(0, RH - 0.001, 0.4);
+      scene.add(ring);
+    });
 
     const addWall = (w: number, h: number, mat: THREE.MeshPhysicalMaterial, pos: [number, number, number], ry: number, id: WallId) => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
@@ -864,6 +948,35 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     bs.position.set(-2.90, 0.86, -1.22);
     bs.rotation.y = 0.3;
     scene.add(bs);
+
+    // Throw pillows on sofa (sofa at x=1.3,z=1.6,ry=PI → back cushions at world z≈1.92)
+    const pilM1 = fabricMat(0x8a4418);
+    const pilM2 = fabricMat(0x2c4462);
+    const pG1 = new RoundedBoxGeometry(0.30, 0.22, 0.24, 3, 0.055);
+    const pG2 = new RoundedBoxGeometry(0.26, 0.20, 0.22, 3, 0.048);
+    const pil1 = new THREE.Mesh(pG1, pilM1);
+    pil1.position.set(0.78, 0.52, 1.76); pil1.rotation.y = Math.PI + 0.18; pil1.castShadow = true; scene.add(pil1);
+    const pil2 = new THREE.Mesh(pG2, pilM2);
+    pil2.position.set(1.88, 0.52, 1.78); pil2.rotation.y = Math.PI - 0.16; pil2.castShadow = true; scene.add(pil2);
+    // Third small square pillow in center, slightly tilted
+    const pG3 = new RoundedBoxGeometry(0.24, 0.20, 0.22, 3, 0.048);
+    const pil3 = new THREE.Mesh(pG3, fabricMat(0xc8a868));
+    pil3.position.set(1.33, 0.52, 1.77); pil3.rotation.y = Math.PI + 0.08; pil3.rotation.z = 0.06; pil3.castShadow = true; scene.add(pil3);
+
+    // Decorative candle on coffee table (table at x=0.4,z=1.14,top y=0.44)
+    const candleWax = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.028, 0.028, 0.11, 12),
+      new THREE.MeshPhysicalMaterial({ color: 0xf2e6cc, roughness: 0.92, metalness: 0 } as THREE.MeshPhysicalMaterialParameters)
+    );
+    candleWax.position.set(0.42, 0.495, 1.44); candleWax.castShadow = true; scene.add(candleWax);
+    const candleFlame = new THREE.Mesh(
+      new THREE.SphereGeometry(0.011, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffcc44, emissive: 0xffaa00, emissiveIntensity: 5.0, roughness: 0.02 })
+    );
+    candleFlame.scale.y = 1.65;
+    candleFlame.position.set(0.42, 0.563, 1.44); scene.add(candleFlame);
+    const candleLight = new THREE.PointLight(0xff8822, 0.70, 1.6);
+    candleLight.position.set(0.42, 0.58, 1.44); scene.add(candleLight);
 
     // Pointer events
     const raycaster = new THREE.Raycaster();
