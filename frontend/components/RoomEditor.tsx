@@ -61,7 +61,7 @@ const CATALOG: FurnitureItem[] = [
 const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Dormit.', 'Electr.', 'Decor'];
 const WALL_LABELS: Record<WallId, string> = { back: 'Fondo', left: 'Izquierda', right: 'Derecha', ceiling: 'Techo' };
 
-// ── Textures ───────────────────────────────────────────────────────────────
+// ── Textures ─────────────────────────────────────────────────────────────
 
 function makeWoodTex(): THREE.CanvasTexture {
   const S = 2048, cv = document.createElement('canvas');
@@ -239,7 +239,7 @@ function makeRugTex(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-// ── Materials ───────────────────────────────────────────────────────────────
+// ── Materials ─────────────────────────────────────────────────────────────
 
 function physMat(color: number | string, rough: number, metal = 0): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: 0.7 });
@@ -273,7 +273,7 @@ function metalMat(col: number, rough = 0.18): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0.96, envMapIntensity: 2.0 });
 }
 
-// ── Furniture ───────────────────────────────────────────────────────────────
+// ── Furniture ─────────────────────────────────────────────────────────────
 
 function sofa(w: number, col: number): THREE.Group {
   const g = new THREE.Group();
@@ -669,7 +669,7 @@ function buildFurniture(item: FurnitureItem): THREE.Group {
   }
 }
 
-// ── Component ───────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────
 
 export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: string | null }) {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -936,335 +936,318 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     // Curtain rod + wavy curtains
     const rodM = metalMat(0x1e1e1e, 0.16);
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 10), rodM);
-    rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
-    const curtainM = new THREE.MeshPhysicalMaterial({ color: 0xe8e0d0, roughness: 0.86, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
-    [-1.65, 2.55].forEach(czOff => {
+    rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.18, 0.8); scene.add(rod);
+    const curtainMat = new THREE.MeshPhysicalMaterial({ color: 0xe8dece, roughness: 0.94, metalness: 0, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
+    [-1.6, 1.6].forEach(side => {
       const shape = new THREE.Shape();
-      const cW = 0.85, cH = RH - 0.18;
-      for (let v = 0; v <= 12; v++) {
-        const t2 = v / 12, wave = Math.sin(t2 * Math.PI * 2.5) * 0.055;
-        v === 0 ? shape.moveTo(wave, t2 * cH) : shape.lineTo(wave, t2 * cH);
+      const W2 = 0.95, H2 = 2.55, waves = 5, amp = 0.072;
+      shape.moveTo(0, 0);
+      for (let y = 0; y <= H2; y += H2 / 40) {
+        const wx = Math.sin((y / H2) * waves * Math.PI * 2) * amp * (1 - y / H2 * 0.35);
+        shape.lineTo(wx, y);
       }
-      for (let v = 12; v >= 0; v--) {
-        const t2 = v / 12, wave = Math.sin(t2 * Math.PI * 2.5) * 0.055;
-        shape.lineTo(wave + cW, t2 * cH);
-      }
-      shape.closePath();
-      const curtain = new THREE.Mesh(new THREE.ShapeGeometry(shape), curtainM);
+      shape.lineTo(W2, H2); shape.lineTo(W2, 0); shape.closePath();
+      const geo = new THREE.ShapeGeometry(shape, 20);
+      const curtain = new THREE.Mesh(geo, curtainMat);
       curtain.rotation.y = -Math.PI / 2;
-      curtain.position.set(RW / 2 - 0.08, 0.16, czOff);
-      curtain.castShadow = true; curtain.receiveShadow = true;
-      scene.add(curtain);
+      curtain.position.set(RW / 2 - 0.12, RH - 2.72, 0.8 + side);
+      curtain.castShadow = true; scene.add(curtain);
     });
 
-    // Skirting board (baseboard)
-    const skirtM = new THREE.MeshPhysicalMaterial({ color: 0xf0ede8, roughness: 0.45, envMapIntensity: 0.5 } as THREE.MeshPhysicalMaterialParameters);
-    [
-      { w: RW,  pos: [0, 0.065,  -RD / 2 + 0.008] as [number,number,number], ry: 0 },
-      { w: RD,  pos: [-RW / 2 + 0.008, 0.065, 0]   as [number,number,number], ry: Math.PI / 2 },
-      { w: RD,  pos: [RW / 2 - 0.008,  0.065, 0]   as [number,number,number], ry: -Math.PI / 2 },
-    ].forEach(({ w, pos, ry }) => {
-      const sk = new THREE.Mesh(new THREE.BoxGeometry(w, 0.13, 0.012), skirtM);
-      sk.position.set(...pos); sk.rotation.y = ry; scene.add(sk);
+    // Baseboard on back & side walls
+    const baseM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.38, envMapIntensity: 0.55 } as THREE.MeshPhysicalMaterialParameters);
+    const addBaseboard = (w: number, pos: [number, number, number], ry: number) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, 0.022), baseM);
+      b.position.set(...pos); b.rotation.y = ry; scene.add(b);
+    };
+    addBaseboard(RW,      [0,    0.06, -RD / 2 + 0.012], 0);
+    addBaseboard(RD,      [-RW / 2 + 0.012, 0.06, 0],    Math.PI / 2);
+    addBaseboard(RD,      [RW / 2 - 0.012,  0.06, 0],    Math.PI / 2);
+
+    // Crown molding
+    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.36, envMapIntensity: 0.6 } as THREE.MeshPhysicalMaterialParameters);
+    const addCrown = (w: number, pos: [number, number, number], ry: number) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.088, 0.055), crownM);
+      b.position.set(...pos); b.rotation.y = ry; scene.add(b);
+    };
+    addCrown(RW,  [0,    RH - 0.044, -RD / 2 + 0.028], 0);
+    addCrown(RD,  [-RW / 2 + 0.028, RH - 0.044, 0],    Math.PI / 2);
+    addCrown(RD,  [RW / 2 - 0.028,  RH - 0.044, 0],    Math.PI / 2);
+
+    // Accent table with vases
+    const accentTable = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.78, 0.28),
+      woodPhysMat(0x5a3818, 0.55)
+    );
+    accentTable.position.set(-2.85, 0.39, -2.5);
+    accentTable.castShadow = true; accentTable.receiveShadow = true;
+    scene.add(accentTable);
+    // Vases on accent table
+    [[0xb05828, 0.42], [0x284858, 0.32], [0x9a8a60, 0.36]].forEach(([col, h], i) => {
+      const v = vase(col, h);
+      v.position.set(-2.85 + (i - 1) * 0.22, 0.78, -2.5);
+      scene.add(v);
     });
 
-    // Crown molding (ceiling–wall junction)
-    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xfaf8f5, roughness: 0.38, envMapIntensity: 0.6 } as THREE.MeshPhysicalMaterialParameters);
-    [
-      { w: RW,  pos: [0, RH - 0.05,  -RD / 2 + 0.012] as [number,number,number], ry: 0 },
-      { w: RD,  pos: [-RW / 2 + 0.012, RH - 0.05, 0]   as [number,number,number], ry: Math.PI / 2 },
-      { w: RD,  pos: [RW / 2 - 0.012,  RH - 0.05, 0]   as [number,number,number], ry: -Math.PI / 2 },
-    ].forEach(({ w, pos, ry }) => {
-      const cm = new THREE.Mesh(new THREE.BoxGeometry(w, 0.10, 0.012), crownM);
-      cm.position.set(...pos); cm.rotation.y = ry; scene.add(cm);
-    });
+    // Book stack on accent table
+    const bs = bookStack();
+    bs.position.set(-2.60, 0.78, -2.5);
+    bs.rotation.y = 0.3;
+    scene.add(bs);
 
-    // Resize observer
-    const ro = new ResizeObserver(() => {
-      const pw = canvas.parentElement?.clientWidth || W;
-      const ph = canvas.parentElement?.clientHeight || H;
-      renderer.setSize(pw, ph);
-      composer.setSize(pw, ph);
-      camera.aspect = pw / ph;
-      camera.updateProjectionMatrix();
-    });
-    if (canvas.parentElement) ro.observe(canvas.parentElement);
-
-    let dragState: { uid: string; startX: number; startZ: number; mouseX: number; mouseZ: number } | null = null;
-
+    // Raycaster for wall picking
+    const raycaster = new THREE.Raycaster();
+    const mouse     = new THREE.Vector2();
     const onPointerDown = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
-      const items = placedRef.current;
-      let hit: PlacedItem | null = null;
-      let minD = Infinity;
-      for (const pi of items) {
-        const meshes: THREE.Mesh[] = [];
-        pi.group.traverse(c => { if (c instanceof THREE.Mesh) meshes.push(c); });
-        const hits = ray.intersectObjects(meshes, false);
-        if (hits.length > 0 && hits[0].distance < minD) { minD = hits[0].distance; hit = pi; }
-      }
-      if (hit) {
-        const floorHits = ray.intersectObjects([floorMesh]);
-        if (floorHits.length > 0) {
-          dragState = { uid: hit.uid, startX: hit.group.position.x, startZ: hit.group.position.z, mouseX: floorHits[0].point.x, mouseZ: floorHits[0].point.z };
-          controls.enabled = false;
-          setSelectedUid(hit.uid);
-          selectedGrpRef.current = hit.group;
-          if (boxHelperRef.current) { boxHelperRef.current.setFromObject(hit.group); boxHelperRef.current.visible = true; }
-        }
-      } else {
-        // Check wall click
-        const wallMeshes = [...wallMeshToId.current.keys()];
-        const wallHits = ray.intersectObjects(wallMeshes);
-        if (wallHits.length > 0) {
-          const wid = wallMeshToId.current.get(wallHits[0].object as THREE.Mesh);
-          if (wid) setSelectedWall(wid);
-        }
-      }
+      mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+      mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const wallMeshes = [...wallMeshToId.current.keys()];
+      const hit = raycaster.intersectObjects(wallMeshes, false)[0];
+      if (hit) setSelectedWall(wallMeshToId.current.get(hit.object as THREE.Mesh)!);
     };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!dragState) return;
-      const rect = canvas.getBoundingClientRect();
-      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
-      const hits = ray.intersectObjects([floorMesh]);
-      if (hits.length > 0) {
-        const dx = hits[0].point.x - dragState.mouseX;
-        const dz = hits[0].point.z - dragState.mouseZ;
-        const item = placedRef.current.find(p => p.uid === dragState!.uid);
-        if (item) {
-          item.group.position.x = dragState.startX + dx;
-          item.group.position.z = dragState.startZ + dz;
-          if (boxHelperRef.current) boxHelperRef.current.setFromObject(item.group);
-        }
-      }
-    };
-
-    const onPointerUp = () => { dragState = null; controls.enabled = true; };
-
     canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', onPointerUp);
 
-    // BoxHelper for selection
-    const bh = new THREE.BoxHelper(new THREE.Object3D(), 0x5ba3f5);
-    bh.visible = false; scene.add(bh); boxHelperRef.current = bh;
-
-    let animId = 0;
+    // Animate
     const animate = () => {
-      animId = requestAnimationFrame(animate);
+      rafRef.current = requestAnimationFrame(animate);
       controls.update();
+      if (boxHelperRef.current && selectedGrpRef.current) boxHelperRef.current.update();
       composer.render();
-      if (boxHelperRef.current?.visible && selectedGrpRef.current) boxHelperRef.current.setFromObject(selectedGrpRef.current);
     };
-    animate(); rafRef.current = animId;
+    animate();
+
+    const onResize = () => {
+      const nW = canvas.parentElement?.clientWidth || 800;
+      const nH = canvas.parentElement?.clientHeight || 600;
+      camera.aspect = nW / nH; camera.updateProjectionMatrix();
+      renderer.setSize(nW, nH); composer.setSize(nW, nH);
+    };
+    window.addEventListener('resize', onResize);
 
     return () => {
-      cancelAnimationFrame(animId);
+      cancelAnimationFrame(rafRef.current);
       canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerup', onPointerUp);
-      ro.disconnect();
+      window.removeEventListener('resize', onResize);
       renderer.dispose();
     };
   }, []);
 
   const addItem = (item: FurnitureItem) => {
     const scene = sceneRef.current; if (!scene) return;
-    const uid = `${item.id}_${Date.now()}`;
     const group = buildFurniture(item);
-    group.position.set((Math.random() - 0.5) * 4, 0, (Math.random() - 0.5) * 3 + 0.5);
+    group.position.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 2);
+    group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
     scene.add(group);
+    const uid = crypto.randomUUID();
     const newItem: PlacedItem = { uid, item, group };
     placedRef.current = [...placedRef.current, newItem];
-    setPlaced(prev => [...prev, newItem]);
+    setPlaced(p => [...p, newItem]);
+    selectedGrpRef.current = group;
+    if (!boxHelperRef.current) {
+      const bh = new THREE.BoxHelper(group, 0x44aaff);
+      scene.add(bh); boxHelperRef.current = bh;
+    } else {
+      boxHelperRef.current.setFromObject(group);
+      boxHelperRef.current.visible = true;
+    }
+    setSelectedUid(uid);
   };
 
   const removeItem = (uid: string) => {
     const scene = sceneRef.current; if (!scene) return;
-    const pi = placedRef.current.find(p => p.uid === uid);
-    if (pi) { scene.remove(pi.group); pi.group.traverse(c => { if (c instanceof THREE.Mesh) { c.geometry.dispose(); if (Array.isArray(c.material)) c.material.forEach(m => m.dispose()); else c.material.dispose(); } }); }
+    const idx = placedRef.current.findIndex(p => p.uid === uid);
+    if (idx === -1) return;
+    const { group } = placedRef.current[idx];
+    scene.remove(group);
+    group.traverse(c => { if (c instanceof THREE.Mesh) { c.geometry.dispose(); if (Array.isArray(c.material)) c.material.forEach(m => m.dispose()); else c.material.dispose(); } });
     placedRef.current = placedRef.current.filter(p => p.uid !== uid);
-    setPlaced(prev => prev.filter(p => p.uid !== uid));
-    if (selectedUid === uid) setSelectedUid(null);
+    setPlaced(p => p.filter(p2 => p2.uid !== uid));
+    if (selectedUid === uid) {
+      setSelectedUid(null);
+      if (boxHelperRef.current) boxHelperRef.current.visible = false;
+    }
   };
 
-  const rotateSelected = (deg: number) => {
-    if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += (deg * Math.PI) / 180;
+  const moveItem = (uid: string, dx: number, dz: number) => {
+    const item = placedRef.current.find(p => p.uid === uid);
+    if (!item) return;
+    item.group.position.x += dx;
+    item.group.position.z += dz;
+    if (boxHelperRef.current && selectedGrpRef.current === item.group) boxHelperRef.current.update();
   };
 
-  const filteredCatalog = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(i => i.category === activeCategory);
+  const rotateItem = (uid: string, dy: number) => {
+    const item = placedRef.current.find(p => p.uid === uid);
+    if (item) { item.group.rotation.y += dy; if (boxHelperRef.current && selectedGrpRef.current === item.group) boxHelperRef.current.update(); }
+  };
+
+  const selectItem = (uid: string) => {
+    setSelectedUid(uid);
+    const item = placedRef.current.find(p => p.uid === uid);
+    if (!item || !sceneRef.current) return;
+    selectedGrpRef.current = item.group;
+    if (!boxHelperRef.current) {
+      const bh = new THREE.BoxHelper(item.group, 0x44aaff);
+      sceneRef.current.add(bh); boxHelperRef.current = bh;
+    } else {
+      boxHelperRef.current.setFromObject(item.group);
+      boxHelperRef.current.visible = true;
+    }
+  };
+
+  const filtered = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(c => c.category === activeCategory);
 
   return (
-    <div style={{ display: 'flex', width: '100%', height: '100%', background: '#0d0d12', fontFamily: 'system-ui,sans-serif', position: 'relative' }}>
+    <div className="flex h-full w-full overflow-hidden bg-[#0d0d12] text-white">
+      {/* 3-D viewport */}
+      <div className="relative flex-1 min-w-0">
+        <canvas ref={canvasRef} className="w-full h-full block" />
 
-      {/* Toggle panel button */}
-      <button
-        onClick={() => setPanelOpen(o => !o)}
-        style={{
-          position: 'absolute', top: 14, left: panelOpen ? 318 : 14, zIndex: 20,
-          background: 'rgba(30,34,44,0.92)', border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 8, color: '#e8e8f0', cursor: 'pointer', padding: '5px 10px', fontSize: '0.8rem',
-          backdropFilter: 'blur(8px)', transition: 'left 0.22s',
-        }}>
-        {panelOpen ? '◀ Ocultar' : '▶ Panel'}
-      </button>
+        {/* Toggle panel */}
+        <button
+          onClick={() => setPanelOpen(o => !o)}
+          className="absolute top-3 right-3 z-20 bg-black/60 hover:bg-black/80 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-medium transition"
+        >{panelOpen ? '✕ Cerrar panel' : '☰ Panel'}</button>
+
+        {/* Selected item controls */}
+        {selectedUid && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 bg-black/70 backdrop-blur rounded-xl px-4 py-2.5 shadow-xl">
+            <span className="text-xs text-white/60 self-center mr-1">Mover:</span>
+            {[['←','x',-0.15],['→','x',0.15],['↑','z',-0.15],['↓','z',0.15]].map(([label, axis, delta]) => (
+              <button key={String(label)} onClick={() => moveItem(selectedUid, axis === 'x' ? Number(delta) : 0, axis === 'z' ? Number(delta) : 0)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-bold transition">{label}</button>
+            ))}
+            <span className="text-xs text-white/60 self-center ml-2 mr-1">Rotar:</span>
+            {[['↺', -0.157],['↻', 0.157]].map(([label, delta]) => (
+              <button key={String(label)} onClick={() => rotateItem(selectedUid, Number(delta))}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-bold transition">{label}</button>
+            ))}
+            <button onClick={() => removeItem(selectedUid)}
+              className="ml-3 px-3 h-8 rounded-lg bg-red-600/70 hover:bg-red-500 text-xs font-semibold transition">Eliminar</button>
+          </div>
+        )}
+      </div>
 
       {/* Side panel */}
       {panelOpen && (
-        <div style={{
-          width: 308, minWidth: 308, background: 'rgba(18,20,28,0.97)', borderRight: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex', flexDirection: 'column', zIndex: 10, overflowY: 'auto',
-          backdropFilter: 'blur(12px)',
-        }}>
-          {/* Header */}
-          <div style={{ padding: '18px 18px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e8e8f8', letterSpacing: 0.3 }}>🏠 Room Editor</div>
-            <div style={{ fontSize: '0.72rem', color: '#7a7a9a', marginTop: 3 }}>Diseña tu espacio en 3D</div>
-          </div>
+        <div className="w-72 shrink-0 flex flex-col bg-[#14141c] border-l border-white/8 overflow-hidden">
 
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            {(['furniture', 'walls', 'floor'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{
-                flex: 1, padding: '8px 4px', background: activeTab === tab ? 'rgba(90,140,255,0.15)' : 'transparent',
-                border: 'none', borderBottom: activeTab === tab ? '2px solid #5a8cff' : '2px solid transparent',
-                color: activeTab === tab ? '#8ab4ff' : '#6a6a8a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
-              }}>
-                {tab === 'furniture' ? '🛋 Muebles' : tab === 'walls' ? '🎨 Paredes' : '🪵 Suelo'}
+          <div className="flex border-b border-white/8">
+            {(['furniture','walls','floor'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2.5 text-xs font-semibold capitalize transition ${
+                  activeTab === tab ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                }`}>
+                {tab === 'furniture' ? 'Muebles' : tab === 'walls' ? 'Paredes' : 'Suelo'}
               </button>
             ))}
           </div>
 
-          {/* Furniture tab */}
+          {/* ── Furniture tab ── */}
           {activeTab === 'furniture' && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div className="flex flex-col flex-1 overflow-hidden">
               {/* Category filter */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '10px 12px 6px' }}>
+              <div className="flex gap-1 flex-wrap p-2 border-b border-white/8">
                 {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{
-                    padding: '3px 9px', borderRadius: 12, border: 'none', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600,
-                    background: activeCategory === cat ? '#5a8cff' : 'rgba(255,255,255,0.07)',
-                    color: activeCategory === cat ? '#fff' : '#9090b0',
-                  }}>{cat}</button>
+                  <button key={cat} onClick={() => setActiveCategory(cat)}
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition ${
+                      activeCategory === cat ? 'bg-indigo-500 text-white' : 'bg-white/8 text-white/55 hover:bg-white/15'
+                    }`}>{cat}</button>
                 ))}
               </div>
               {/* Catalog grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, padding: '4px 12px 12px', overflowY: 'auto' }}>
-                {filteredCatalog.map(item => (
-                  <button key={item.id} onClick={() => addItem(item)} style={{
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
-                    borderRadius: 10, padding: '10px 6px', cursor: 'pointer', color: '#d0d0e8',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                    transition: 'background 0.15s',
-                  }}>
-                    <span style={{ fontSize: '1.5rem' }}>{item.emoji}</span>
-                    <span style={{ fontSize: '0.66rem', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>{item.name}</span>
-                    <span style={{ fontSize: '0.58rem', color: '#6a6a8a', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: '1px 5px' }}>{item.category}</span>
+              <div className="flex-1 overflow-y-auto p-2 grid grid-cols-2 gap-1.5 content-start">
+                {filtered.map(item => (
+                  <button key={item.id} onClick={() => addItem(item)}
+                    className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/5 hover:bg-white/12 border border-white/6 hover:border-indigo-400/50 transition group">
+                    <span className="text-2xl">{item.emoji}</span>
+                    <span className="text-[11px] text-white/75 text-center leading-tight group-hover:text-white">{item.name}</span>
                   </button>
                 ))}
               </div>
-
-              {/* Placed items */}
+              {/* Placed items list */}
               {placed.length > 0 && (
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#7a7a9a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>En la sala</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {placed.map(pi => (
-                      <div key={pi.uid} onClick={() => { setSelectedUid(pi.uid); selectedGrpRef.current = pi.group; if (boxHelperRef.current) { boxHelperRef.current.setFromObject(pi.group); boxHelperRef.current.visible = true; } }}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '5px 8px', borderRadius: 7, cursor: 'pointer',
-                          background: selectedUid === pi.uid ? 'rgba(90,140,255,0.18)' : 'rgba(255,255,255,0.04)',
-                          border: `1px solid ${selectedUid === pi.uid ? 'rgba(90,140,255,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                        }}>
-                        <span style={{ fontSize: '0.70rem', color: '#c0c0d8' }}>{pi.item.emoji} {pi.item.name}</span>
-                        <button onClick={e => { e.stopPropagation(); removeItem(pi.uid); }} style={{
-                          background: 'rgba(255,80,80,0.18)', border: 'none', borderRadius: 5,
-                          color: '#ff8080', cursor: 'pointer', fontSize: '0.65rem', padding: '2px 6px',
-                        }}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-                  {selectedUid && (
-                    <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
-                      <button onClick={() => rotateSelected(-15)} style={{ flex: 1, padding: '5px', background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 6, color: '#c0c0d8', cursor: 'pointer', fontSize: '0.72rem' }}>↺ −15°</button>
-                      <button onClick={() => rotateSelected(15)} style={{ flex: 1, padding: '5px', background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 6, color: '#c0c0d8', cursor: 'pointer', fontSize: '0.72rem' }}>↻ +15°</button>
+                <div className="border-t border-white/8 p-2 max-h-44 overflow-y-auto">
+                  <p className="text-[10px] text-white/35 uppercase tracking-wider mb-1.5 px-1">En escena ({placed.length})</p>
+                  {placed.map(p => (
+                    <div key={p.uid}
+                      onClick={() => selectItem(p.uid)}
+                      className={`flex items-center justify-between px-2 py-1 rounded-lg mb-0.5 cursor-pointer transition ${
+                        selectedUid === p.uid ? 'bg-indigo-500/25 border border-indigo-400/40' : 'bg-white/5 hover:bg-white/10'
+                      }`}>
+                      <span className="text-xs">{p.item.emoji} {p.item.name}</span>
+                      <button onClick={e => { e.stopPropagation(); removeItem(p.uid); }}
+                        className="text-white/30 hover:text-red-400 text-xs ml-1 transition">✕</button>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* Walls tab */}
+          {/* ── Walls tab ── */}
           {activeTab === 'walls' && (
-            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#7a7a9a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Selecciona pared</div>
-              <div style={{ display: 'flex', gap: 5 }}>
-                {(Object.keys(WALL_LABELS) as WallId[]).map(wid => (
-                  <button key={wid} onClick={() => setSelectedWall(wid)} style={{
-                    flex: 1, padding: '5px 3px', borderRadius: 7, border: `1px solid ${selectedWall === wid ? '#5a8cff' : 'rgba(255,255,255,0.1)'}`,
-                    background: selectedWall === wid ? 'rgba(90,140,255,0.18)' : 'rgba(255,255,255,0.04)',
-                    color: selectedWall === wid ? '#8ab4ff' : '#8080a0', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600,
-                  }}>{WALL_LABELS[wid]}</button>
+            <div className="flex-1 overflow-y-auto p-3">
+              {/* Wall selector */}
+              <div className="flex gap-1.5 mb-3">
+                {(Object.keys(WALL_LABELS) as WallId[]).map(id => (
+                  <button key={id} onClick={() => setSelectedWall(id)}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition ${
+                      selectedWall === id ? 'bg-indigo-500 text-white' : 'bg-white/8 text-white/50 hover:bg-white/15'
+                    }`}>{WALL_LABELS[id]}</button>
                 ))}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {WALL_COLORS.map(({ name, hex }) => (
-                  <button key={hex} onClick={() => setWallColors(prev => ({ ...prev, [selectedWall]: hex }))} style={{
-                    display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px',
-                    borderRadius: 8, border: `1.5px solid ${wallColors[selectedWall] === hex ? '#5a8cff' : 'rgba(255,255,255,0.08)'}`,
-                    background: wallColors[selectedWall] === hex ? 'rgba(90,140,255,0.15)' : 'rgba(255,255,255,0.04)',
-                    cursor: 'pointer', color: '#c0c0d8',
-                  }}>
-                    <span style={{ width: 18, height: 18, borderRadius: 4, background: hex, display: 'inline-block', border: '1px solid rgba(0,0,0,0.18)', flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.64rem', fontWeight: 600 }}>{name}</span>
+              {/* Color swatches */}
+              <p className="text-[10px] text-white/35 uppercase tracking-wider mb-2">Color — {WALL_LABELS[selectedWall]}</p>
+              <div className="grid grid-cols-5 gap-1.5">
+                {WALL_COLORS.map(({ hex, name }) => (
+                  <button key={hex} onClick={() => setWallColors(prev => ({ ...prev, [selectedWall]: hex }))}
+                    title={name}
+                    className={`w-full aspect-square rounded-lg border-2 transition ${
+                      wallColors[selectedWall] === hex ? 'border-indigo-400 scale-110 shadow-lg shadow-indigo-500/30' : 'border-transparent hover:border-white/30'
+                    }`}
+                    style={{ backgroundColor: hex }} />
+                ))}
+              </div>
+              <p className="text-[10px] text-white/25 mt-3">También puedes hacer clic en una pared en la escena 3D para seleccionarla.</p>
+            </div>
+          )}
+
+          {/* ── Floor tab ── */}
+          {activeTab === 'floor' && (
+            <div className="flex-1 overflow-y-auto p-3">
+              <p className="text-[10px] text-white/35 uppercase tracking-wider mb-2">Tinte del suelo</p>
+              <div className="grid grid-cols-3 gap-2">
+                {FLOOR_TINTS.map(({ hex, name }) => (
+                  <button key={hex} onClick={() => setFloorTint(hex)}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition ${
+                      floorTint === hex ? 'border-indigo-400 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:border-white/25'
+                    }`}>
+                    <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: hex }} />
+                    <span className="text-[10px] text-white/60 text-center leading-tight">{name}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Floor tab */}
-          {activeTab === 'floor' && (
-            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#7a7a9a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Tinte del suelo</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {FLOOR_TINTS.map(({ name, hex }) => (
-                  <button key={hex} onClick={() => setFloorTint(hex)} style={{
-                    display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px',
-                    borderRadius: 8, border: `1.5px solid ${floorTint === hex ? '#5a8cff' : 'rgba(255,255,255,0.08)'}`,
-                    background: floorTint === hex ? 'rgba(90,140,255,0.15)' : 'rgba(255,255,255,0.04)',
-                    cursor: 'pointer', color: '#c0c0d8',
-                  }}>
-                    <span style={{ width: 18, height: 18, borderRadius: 4, background: hex, display: 'inline-block', border: '1px solid rgba(0,0,0,0.18)', flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.64rem', fontWeight: 600 }}>{name}</span>
-                  </button>
-                ))}
-              </div>
+          {/* ── Uploaded image preview ── */}
+          {uploadedImageUrl && (
+            <div className="border-t border-white/8 p-3">
+              <p className="text-[10px] text-white/35 uppercase tracking-wider mb-2">Imagen de referencia</p>
+              <img src={uploadedImageUrl} alt="Referencia" className="w-full rounded-xl object-cover max-h-36" />
             </div>
           )}
 
           {/* Footer */}
-          <div style={{ padding: '10px 14px 14px', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 'auto' }}>
-            <p style={{ color: '#475569', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>Gratis · Sin tarjeta · 2 tours incluidos</p>
+          <div className="p-3 border-t border-white/8">
+            <p className="text-[10px] text-white/20 text-center">Visitas Virtuales · Sin tarjeta · 2 tours incluidos</p>
           </div>
         </div>
       )}
-
-      {/* Canvas */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-      </div>
-
     </div>
   );
 }
