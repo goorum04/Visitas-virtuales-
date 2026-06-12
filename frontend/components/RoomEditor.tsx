@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
@@ -81,7 +82,6 @@ function makeWoodTex(): THREE.CanvasTexture {
         cx.stroke();
       }
       cx.restore();
-      // occasional knot
       if (Math.random() < 0.07) {
         const kx = x + PW * (0.2 + Math.random() * 0.6), ky = y + PH * (0.2 + Math.random() * 0.6);
         cx.save(); cx.globalAlpha = 0.12;
@@ -151,6 +151,67 @@ function makeArtTex(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
+function makeRugTex(): THREE.CanvasTexture {
+  const W = 1280, H = 860, cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d')!;
+  cx.fillStyle = '#5e1212'; cx.fillRect(0, 0, W, H);
+  // outer gold border
+  cx.strokeStyle = '#c8901a'; cx.lineWidth = 32; cx.strokeRect(16, 16, W - 32, H - 32);
+  // cream line
+  cx.strokeStyle = '#e8d8b0'; cx.lineWidth = 10; cx.strokeRect(56, 56, W - 112, H - 112);
+  // inner red border
+  cx.strokeStyle = '#8a1a1a'; cx.lineWidth = 16; cx.strokeRect(72, 72, W - 144, H - 144);
+  // cream line 2
+  cx.strokeStyle = '#e8d8b0'; cx.lineWidth = 8; cx.strokeRect(94, 94, W - 188, H - 188);
+  const ox = W / 2, oy = H / 2;
+  // central medallion rings
+  const octagon = (r: number, stroke: string, lw: number) => {
+    cx.strokeStyle = stroke; cx.lineWidth = lw; cx.beginPath();
+    for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI * 2 - Math.PI / 8; i === 0 ? cx.moveTo(ox + Math.cos(a) * r, oy + Math.sin(a) * r) : cx.lineTo(ox + Math.cos(a) * r, oy + Math.sin(a) * r); }
+    cx.closePath(); cx.stroke();
+  };
+  cx.fillStyle = '#8a1a1a';
+  cx.beginPath(); for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI * 2 - Math.PI / 8; i === 0 ? cx.moveTo(ox + Math.cos(a) * 198, oy + Math.sin(a) * 198) : cx.lineTo(ox + Math.cos(a) * 198, oy + Math.sin(a) * 198); } cx.fill();
+  octagon(198, '#c8901a', 16); octagon(168, '#e8d8b0', 9); octagon(142, '#c8901a', 7); octagon(118, '#e8d8b0', 5);
+  // inner star fill
+  cx.fillStyle = '#c8901a';
+  cx.beginPath(); cx.arc(ox, oy, 62, 0, Math.PI * 2); cx.fill();
+  cx.fillStyle = '#5e1212';
+  cx.beginPath(); cx.arc(ox, oy, 42, 0, Math.PI * 2); cx.fill();
+  cx.fillStyle = '#e8d8b0';
+  cx.beginPath(); cx.arc(ox, oy, 22, 0, Math.PI * 2); cx.fill();
+  cx.fillStyle = '#c8901a';
+  cx.beginPath(); cx.arc(ox, oy, 10, 0, Math.PI * 2); cx.fill();
+  // star rays
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    cx.fillStyle = 'rgba(200,144,26,0.55)';
+    cx.save(); cx.translate(ox, oy); cx.rotate(a);
+    cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(-22, 115); cx.lineTo(0, 105); cx.lineTo(22, 115); cx.closePath(); cx.fill();
+    cx.restore();
+  }
+  // corner medallions
+  [[120, 120], [W - 120, 120], [120, H - 120], [W - 120, H - 120]].forEach(([cx2, cy2]) => {
+    cx.fillStyle = '#c8901a'; cx.beginPath();
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + Math.PI / 4; i === 0 ? cx.moveTo(cx2 + Math.cos(a) * 50, cy2 + Math.sin(a) * 50) : cx.lineTo(cx2 + Math.cos(a) * 50, cy2 + Math.sin(a) * 50); } cx.fill();
+    cx.fillStyle = '#5e1212'; cx.beginPath(); cx.arc(cx2, cy2, 22, 0, Math.PI * 2); cx.fill();
+    cx.fillStyle = '#e8d8b0'; cx.beginPath(); cx.arc(cx2, cy2, 10, 0, Math.PI * 2); cx.fill();
+  });
+  // repeating diamond fill
+  for (let y = 116; y < H - 116; y += 72) {
+    for (let x = 116; x < W - 116; x += 72) {
+      const d = Math.hypot(x - ox, (y - oy) * (W / H));
+      if (d > 210) {
+        cx.save(); cx.translate(x, y); cx.globalAlpha = 0.28;
+        cx.fillStyle = '#c8901a'; cx.beginPath(); cx.moveTo(0, -20); cx.lineTo(20, 0); cx.lineTo(0, 20); cx.lineTo(-20, 0); cx.closePath(); cx.fill();
+        cx.restore();
+      }
+    }
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
 // ── Materials ─────────────────────────────────────────────────────────────────
 
 function physMat(color: number | string, rough: number, metal = 0): THREE.MeshPhysicalMaterial {
@@ -182,12 +243,8 @@ function sofa(w: number, col: number): THREE.Group {
   const g = new THREE.Group();
   const fab = fabricMat(col);
   const legM = woodPhysMat(0x2a1a08, 0.35);
-
-  // base frame
   const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.13, 0.86), physMat(0x1a1208, 0.75));
   base.position.y = 0.065; base.castShadow = true; base.receiveShadow = true; g.add(base);
-
-  // seat cushions
   const n = w > 2.0 ? 3 : 2;
   const cw = (w - 0.24) / n - 0.025;
   for (let i = 0; i < n; i++) {
@@ -195,8 +252,6 @@ function sofa(w: number, col: number): THREE.Group {
     const c = new THREE.Mesh(new RoundedBoxGeometry(cw, 0.22, 0.58, 3, 0.045), fab);
     c.position.set(cx2, 0.24, 0.04); c.castShadow = true; g.add(c);
   }
-
-  // back cushions
   const nb = w > 2.0 ? 3 : 2;
   const bw = (w - 0.26) / nb - 0.025;
   for (let i = 0; i < nb; i++) {
@@ -204,14 +259,10 @@ function sofa(w: number, col: number): THREE.Group {
     const bc = new THREE.Mesh(new RoundedBoxGeometry(bw, 0.50, 0.22, 3, 0.05), fab);
     bc.position.set(bx, 0.50, -0.32); bc.castShadow = true; g.add(bc);
   }
-
-  // arms
   [-w / 2 + 0.07, w / 2 - 0.07].forEach(ax => {
     const arm = new THREE.Mesh(new RoundedBoxGeometry(0.14, 0.14, 0.82, 3, 0.04), fab);
     arm.position.set(ax, 0.40, 0); arm.castShadow = true; g.add(arm);
   });
-
-  // legs
   [[-w / 2 + 0.13, 0.33], [-w / 2 + 0.13, -0.33], [w / 2 - 0.13, 0.33], [w / 2 - 0.13, -0.33]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.020, 0.14, 10), legM);
     leg.position.set(lx, -0.035, lz); leg.castShadow = true; g.add(leg);
@@ -223,21 +274,16 @@ function armchair(col: number): THREE.Group {
   const g = new THREE.Group();
   const fab = fabricMat(col);
   const legM = woodPhysMat(0x2a1a08, 0.35);
-
   const base = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.12, 0.84), physMat(0x1a1208, 0.75));
   base.position.y = 0.06; base.castShadow = true; base.receiveShadow = true; g.add(base);
-
   const seat = new THREE.Mesh(new RoundedBoxGeometry(0.74, 0.22, 0.62, 3, 0.05), fab);
   seat.position.set(0, 0.23, 0.03); seat.castShadow = true; g.add(seat);
-
   const back = new THREE.Mesh(new RoundedBoxGeometry(0.74, 0.58, 0.22, 3, 0.06), fab);
   back.position.set(0, 0.56, -0.31); back.castShadow = true; g.add(back);
-
   [-0.48, 0.48].forEach(ax => {
     const arm = new THREE.Mesh(new RoundedBoxGeometry(0.16, 0.13, 0.84, 3, 0.04), fab);
     arm.position.set(ax, 0.40, 0); arm.castShadow = true; g.add(arm);
   });
-
   [[-0.32, 0.30], [-0.32, -0.30], [0.32, 0.30], [0.32, -0.30]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.018, 0.12, 10), legM);
     leg.position.set(lx, -0.0, lz); leg.castShadow = true; g.add(leg);
@@ -432,6 +478,60 @@ function bookshelf(col: number): THREE.Group {
   return g;
 }
 
+// LatheGeometry ceramic vase
+function vase(col: number, h = 0.38): THREE.Group {
+  const g = new THREE.Group();
+  const scale = h / 0.38;
+  const pts = [
+    new THREE.Vector2(0.00, 0.000),
+    new THREE.Vector2(0.08, 0.008 * scale),
+    new THREE.Vector2(0.11, 0.060 * scale),
+    new THREE.Vector2(0.13, 0.130 * scale),
+    new THREE.Vector2(0.10, 0.220 * scale),
+    new THREE.Vector2(0.07, 0.290 * scale),
+    new THREE.Vector2(0.09, 0.340 * scale),
+    new THREE.Vector2(0.075, h),
+  ];
+  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.12, metalness: 0, envMapIntensity: 1.2 });
+  mat.clearcoat = 0.95;
+  mat.clearcoatRoughness = 0.06;
+  const mesh = new THREE.Mesh(new THREE.LatheGeometry(pts, 28), mat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  g.add(mesh);
+  return g;
+}
+
+// Stack of books
+function bookStack(): THREE.Group {
+  const g = new THREE.Group();
+  const cols = [0x8a4828, 0x2a4868, 0x486828, 0x684838, 0x5a3858];
+  let yOff = 0;
+  cols.forEach((col, i) => {
+    const bh = 0.038 + Math.random() * 0.010;
+    const bw = 0.19 + Math.random() * 0.04;
+    const bd = 0.13 + Math.random() * 0.03;
+    const slight = (Math.random() - 0.5) * 0.03;
+    const book = new THREE.Mesh(
+      new THREE.BoxGeometry(bw, bh, bd),
+      new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.82, metalness: 0, envMapIntensity: 0.4 })
+    );
+    book.position.set(slight, yOff + bh / 2, (Math.random() - 0.5) * 0.01);
+    book.rotation.y = slight * 0.6;
+    book.castShadow = true; book.receiveShadow = i === 0;
+    g.add(book);
+    yOff += bh;
+    if (i < cols.length - 1) {
+      const page = new THREE.Mesh(
+        new THREE.BoxGeometry(bw - 0.006, 0.002, bd - 0.006),
+        new THREE.MeshPhysicalMaterial({ color: 0xf0ebe0, roughness: 0.95, metalness: 0 })
+      );
+      page.position.set(slight, yOff, 0);
+      g.add(page);
+    }
+  });
+  return g;
+}
+
 function buildFurniture(item: FurnitureItem): THREE.Group {
   const { id, primary: p, secondary: s = 0x888880 } = item;
   switch (id) {
@@ -451,9 +551,9 @@ function buildFurniture(item: FurnitureItem): THREE.Group {
     case 'tv':       return tvUnit(p, s);
     case 'shelf':    return bookshelf(p);
     default: {
-      const g = new THREE.Group();
+      const gr = new THREE.Group();
       const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), physMat(p, 0.7));
-      m.position.y = 0.4; m.castShadow = true; g.add(m); return g;
+      m.position.y = 0.4; m.castShadow = true; gr.add(m); return gr;
     }
   }
 }
@@ -516,7 +616,22 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     rendererRef.current = renderer;
 
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; pmrem.dispose();
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    // Try to load warm HDRI for better reflections, fall back to RoomEnvironment
+    const rgbeLoader = new RGBELoader();
+    rgbeLoader.load(
+      'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_03_1k.hdr',
+      (hdri) => {
+        hdri.mapping = THREE.EquirectangularReflectionMapping;
+        const envMap = pmrem.fromEquirectangular(hdri).texture;
+        scene.environment = envMap;
+        hdri.dispose();
+        pmrem.dispose();
+      },
+      undefined,
+      () => pmrem.dispose()
+    );
 
     const camera = new THREE.PerspectiveCamera(52, W / H, 0.1, 60);
     camera.position.set(0, 2.4, 6.0); cameraRef.current = camera;
@@ -578,6 +693,17 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), floorMat);
     floorMesh.rotation.x = -Math.PI / 2; floorMesh.receiveShadow = true; scene.add(floorMesh);
 
+    // Persian rug
+    const rugTex = makeRugTex();
+    const rugMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 2.2),
+      new THREE.MeshStandardMaterial({ map: rugTex, roughness: 0.98, metalness: 0 })
+    );
+    rugMesh.rotation.x = -Math.PI / 2;
+    rugMesh.position.set(0.3, 0.003, 0.75);
+    rugMesh.receiveShadow = true;
+    scene.add(rugMesh);
+
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), ceilMat);
     ceil.rotation.x = Math.PI / 2; ceil.position.y = RH; scene.add(ceil);
 
@@ -596,6 +722,25 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     addWall(RW, RH, backMat,  [0, RH / 2, -RD / 2], 0,           'back');
     addWall(RD, RH, leftMat,  [-RW / 2, RH / 2, 0], Math.PI / 2,  'left');
     addWall(RD, RH, rightMat, [RW / 2,  RH / 2, 0], -Math.PI / 2, 'right');
+
+    // Decorative mirror on left wall
+    const goldM = metalMat(0xc8a020, 0.14);
+    const mirrorFrameOuter = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.75, 1.28), goldM);
+    mirrorFrameOuter.rotation.y = Math.PI / 2;
+    mirrorFrameOuter.position.set(-RW / 2 + 0.06, 1.85, -0.55);
+    scene.add(mirrorFrameOuter);
+    const mirrorGlass = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.08, 1.56),
+      new THREE.MeshPhysicalMaterial({ color: 0xe8f0f8, metalness: 0.98, roughness: 0.02, envMapIntensity: 2.5 } as THREE.MeshPhysicalMaterialParameters)
+    );
+    mirrorGlass.rotation.y = Math.PI / 2;
+    mirrorGlass.position.set(-RW / 2 + 0.085, 1.85, -0.55);
+    scene.add(mirrorGlass);
+    // Mirror top arc detail
+    const arcTop = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.10, 18, 1, false, 0, Math.PI), goldM);
+    arcTop.rotation.z = Math.PI / 2;
+    arcTop.position.set(-RW / 2 + 0.06, 1.85 + 0.78 + 0.05, -0.55);
+    scene.add(arcTop);
 
     // Panel moldings on back wall
     const moldM = new THREE.MeshPhysicalMaterial({ color: 0xfaf8f4, roughness: 0.44, envMapIntensity: 0.65 } as THREE.MeshPhysicalMaterialParameters);
@@ -636,14 +781,22 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
       b.position.set(RW / 2 - 0.05, 1.72, 0.8); scene.add(b);
     });
 
-    // Curtain rod + camel curtains
+    // Curtain rod + wavy curtains
     const rodM = metalMat(0x1e1e1e, 0.16);
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 10), rodM);
     rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
-    const curtM = new THREE.MeshPhysicalMaterial({ color: 0xb89870, roughness: 0.94, side: THREE.FrontSide } as THREE.MeshPhysicalMaterialParameters);
-    [[2.3], [-0.75]].forEach(([cz]) => {
-      const c = new THREE.Mesh(new THREE.BoxGeometry(0.09, RH - 0.08, 1.3), curtM);
-      c.position.set(RW / 2 - 0.16, (RH - 0.08) / 2 + 0.04, cz);
+    const curtM = new THREE.MeshPhysicalMaterial({ color: 0xb89870, roughness: 0.94, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
+    [[2.3, 1], [-0.75, -1]].forEach(([cz, dir]) => {
+      const geo = new THREE.PlaneGeometry(1.4, RH - 0.12, 8, 1);
+      const pos = geo.attributes.position;
+      for (let vi = 0; vi < pos.count; vi++) {
+        const localX = pos.getX(vi);
+        pos.setZ(vi, Math.sin(localX * Math.PI * 2.5 / 1.4) * 0.055 * dir);
+      }
+      geo.computeVertexNormals();
+      const c = new THREE.Mesh(geo, curtM);
+      c.rotation.y = Math.PI / 2;
+      c.position.set(RW / 2 - 0.18, (RH - 0.12) / 2 + 0.06, cz);
       c.castShadow = true; c.receiveShadow = true; scene.add(c);
     });
 
@@ -694,6 +847,23 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
       initPlaced.push({ uid: `${id}-init-${i}`, item, group });
     });
     placedRef.current = initPlaced; setPlaced([...initPlaced]);
+
+    // Static decorative objects (not draggable)
+    // Vases on sideboard top — sideboard at (-3.05,0,-1.2) ry=PI/2
+    // After rotation: sideboard length along world Z, handles face toward x=-2.84
+    const v1 = vase(0xc8a87a, 0.44);
+    v1.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    v1.position.set(-2.86, 0.86, -1.72); scene.add(v1);
+
+    const v2 = vase(0x4a6898, 0.30);
+    v2.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    v2.position.set(-2.86, 0.86, -0.74); scene.add(v2);
+
+    const bs = bookStack();
+    bs.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    bs.position.set(-2.90, 0.86, -1.22);
+    bs.rotation.y = 0.3;
+    scene.add(bs);
 
     // Pointer events
     const raycaster = new THREE.Raycaster();
