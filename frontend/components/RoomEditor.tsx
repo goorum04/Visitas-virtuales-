@@ -8,10 +8,12 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 
 type WallId = 'back' | 'left' | 'right' | 'ceiling';
 interface FurnitureItem { id: string; name: string; category: string; emoji: string; primary: number; secondary?: number; }
@@ -103,18 +105,43 @@ function makeWoodTex(): THREE.CanvasTexture {
 }
 
 function makePlasterNormal(): THREE.CanvasTexture {
+  const S = 1024, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const cx = cv.getContext('2d')!; cx.fillStyle = '#8080ff'; cx.fillRect(0, 0, S, S);
+  const id = cx.getImageData(0, 0, S, S);
+  for (let i = 0; i < id.data.length; i += 4) {
+    // Multi-frequency noise for realistic stucco texture
+    const x = (i / 4) % S, y = Math.floor(i / 4 / S);
+    const n1 = (Math.sin(x * 0.18) + Math.sin(y * 0.22)) * 3.5;
+    const n2 = (Math.random() - 0.5) * 18;
+    id.data[i]     = 128 + n1 + n2 * 0.6;
+    id.data[i + 1] = 128 + n1 * 0.8 + n2 * 0.6;
+    id.data[i + 2] = 255; id.data[i + 3] = 255;
+  }
+  cx.putImageData(id, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 6); return t;
+}
+
+function makeFabricNormal(): THREE.CanvasTexture {
   const S = 512, cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const cx = cv.getContext('2d')!; cx.fillStyle = '#8080ff'; cx.fillRect(0, 0, S, S);
   const id = cx.getImageData(0, 0, S, S);
   for (let i = 0; i < id.data.length; i += 4) {
-    id.data[i]     = 128 + (Math.random() - 0.5) * 14;
-    id.data[i + 1] = 128 + (Math.random() - 0.5) * 14;
+    const x = (i / 4) % S, y = Math.floor(i / 4 / S);
+    // Woven fabric pattern: interleaving horizontal and vertical micro-ridges
+    const wx = Math.sin(x * 0.628) * 8;  // ~2px period horizontal thread
+    const wy = Math.sin(y * 0.628) * 8;  // ~2px period vertical thread
+    const mask = (Math.floor(x / 4) + Math.floor(y / 4)) % 2; // weave alternation
+    const n = mask === 0 ? wx : wy;
+    id.data[i]     = 128 + n * 0.7;
+    id.data[i + 1] = 128 + n * 0.7;
     id.data[i + 2] = 255; id.data[i + 3] = 255;
   }
   cx.putImageData(id, 0, 0);
   const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); return t;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(12, 12); return t;
 }
 
 function makeArtTex(): THREE.CanvasTexture {
@@ -219,23 +246,32 @@ function physMat(color: number | string, rough: number, metal = 0): THREE.MeshPh
   return new THREE.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: 0.7 });
 }
 
+// Shared fabric normal map — created once, referenced by all fabric materials
+let _fabricNormal: THREE.CanvasTexture | null = null;
+function getFabricNormal(): THREE.CanvasTexture {
+  if (!_fabricNormal) _fabricNormal = makeFabricNormal();
+  return _fabricNormal;
+}
+
 function fabricMat(col: number): THREE.MeshPhysicalMaterial {
-  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.83, metalness: 0, envMapIntensity: 0.3 });
-  mat.sheen = 0.55;
-  mat.sheenRoughness = 0.58;
+  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.78, metalness: 0, envMapIntensity: 0.35 });
+  mat.sheen = 0.65;
+  mat.sheenRoughness = 0.52;
   mat.sheenColor.setHex(col);
+  mat.normalMap = getFabricNormal();
+  mat.normalScale.set(0.35, 0.35);
   return mat;
 }
 
 function woodPhysMat(col: number, rough = 0.55): THREE.MeshPhysicalMaterial {
-  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0, envMapIntensity: 0.7 });
-  mat.clearcoat = 0.28;
-  mat.clearcoatRoughness = 0.4;
+  const mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0, envMapIntensity: 0.85 });
+  mat.clearcoat = 0.42;
+  mat.clearcoatRoughness = 0.30;
   return mat;
 }
 
 function metalMat(col: number, rough = 0.18): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0.94, envMapIntensity: 1.6 });
+  return new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0.96, envMapIntensity: 2.0 });
 }
 
 // ── Furniture ─────────────────────────────────────────────────────────────────
@@ -687,7 +723,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.22;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
@@ -718,35 +754,53 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     controls.maxPolarAngle = Math.PI / 2 + 0.1; controls.target.set(0, 0.8, 0);
     controlsRef.current = controls;
 
-    // Post-processing
+    // Post-processing — photorealistic pipeline
     const composer = new EffectComposer(renderer);
     composerRef.current = composer;
     composer.addPass(new RenderPass(scene, camera));
-    const ssao = new SSAOPass(scene, camera, W, H);
-    ssao.kernelRadius = 0.6;
-    ssao.minDistance = 0.002;
-    ssao.maxDistance = 0.08;
-    composer.addPass(ssao);
-    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.18, 0.5, 0.82);
+    // Ground-Truth Ambient Occlusion — far more accurate than SSAO
+    const gtao = new GTAOPass(scene, camera, W, H);
+    gtao.output = GTAOPass.OUTPUT.Default;
+    composer.addPass(gtao);
+    // Bloom for bulb glow
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.15, 0.45, 0.86);
     composer.addPass(bloom);
+    // Depth of field — the single biggest "looks like a real photo" effect
+    const bokeh = new BokehPass(scene, camera, { focus: 5.8, aperture: 0.000035, maxblur: 0.008 });
+    composer.addPass(bokeh);
     composer.addPass(new OutputPass());
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0xfff4e0, 0.50));
-    const winLight = new THREE.DirectionalLight(0xfff8ee, 4.5);
-    winLight.position.set(7, 5, 1); winLight.target.position.set(0, 0, 0);
-    winLight.castShadow = true; winLight.shadow.mapSize.set(2048, 2048);
-    winLight.shadow.camera.near = 2; winLight.shadow.camera.far = 22;
-    winLight.shadow.camera.left = -6; winLight.shadow.camera.right = 6;
-    winLight.shadow.camera.top = 5; winLight.shadow.camera.bottom = -5;
-    winLight.shadow.bias = -0.001; winLight.shadow.normalBias = 0.02;
+    // Photorealistic lighting — low ambient, strong directional, soft area fills
+    RectAreaLightUniformsLib.init();
+    scene.add(new THREE.AmbientLight(0xfff0d8, 0.14));
+
+    // Main sunlight through right-wall window — sharp shadows, warm
+    const winLight = new THREE.SpotLight(0xfff4e0, 18, 22, Math.PI / 6.5, 0.28, 1.2);
+    winLight.position.set(6.8, 4.8, 1.0); winLight.target.position.set(-0.5, 0, 0.5);
+    winLight.castShadow = true; winLight.shadow.mapSize.set(4096, 4096);
+    winLight.shadow.camera.near = 1; winLight.shadow.camera.far = 24;
+    winLight.shadow.bias = -0.0008; winLight.shadow.normalBias = 0.018;
     scene.add(winLight); scene.add(winLight.target);
-    const ceilLight = new THREE.PointLight(0xfff4d8, 2.4, 11);
+
+    // Soft cool fill from opposite side (sky bounce)
+    const skyFill = new THREE.DirectionalLight(0xc8dcf0, 0.55);
+    skyFill.position.set(-5, 4, 3); scene.add(skyFill);
+
+    // Warm RectAreaLight — simulates light bouncing off back wall
+    const wallBounce = new THREE.RectAreaLight(0xffe8c8, 1.8, 5.5, 2.2);
+    wallBounce.position.set(0, 1.5, -2.8); wallBounce.lookAt(0, 1.5, 2);
+    scene.add(wallBounce);
+
+    // Soft warm fill from left — simulates reflected light from floor/furniture
+    const leftFill = new THREE.RectAreaLight(0xfff0d8, 0.9, 3.0, 2.5);
+    leftFill.position.set(-3.2, 1.2, 0.5); leftFill.lookAt(0, 0.8, 0.5);
+    scene.add(leftFill);
+
+    // Chandelier PointLight — warm, medium radius
+    const ceilLight = new THREE.PointLight(0xfff0c8, 2.2, 10);
     ceilLight.position.set(0, 2.38, 0.4);
-    ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(512, 512); ceilLight.shadow.bias = -0.003;
+    ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(1024, 1024); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
-    const fill = new THREE.DirectionalLight(0xd8e8ff, 0.35);
-    fill.position.set(-3, 3, 5); scene.add(fill);
 
     const RW = 7, RH = 3, RD = 6.5;
     const plasterN = makePlasterNormal();
@@ -762,12 +816,38 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     wallMatRefs.current = { back: backMat as unknown as THREE.MeshStandardMaterial, left: leftMat as unknown as THREE.MeshStandardMaterial, right: rightMat as unknown as THREE.MeshStandardMaterial, ceiling: ceilMat as unknown as THREE.MeshStandardMaterial };
 
     const woodTex  = makeWoodTex();
-    const floorMat = new THREE.MeshPhysicalMaterial({ map: woodTex, color: new THREE.Color('#6b3c18'), roughness: 0.38, metalness: 0, envMapIntensity: 0.65 } as THREE.MeshPhysicalMaterialParameters);
-    (floorMat as THREE.MeshPhysicalMaterial).clearcoat = 0.35;
-    (floorMat as THREE.MeshPhysicalMaterial).clearcoatRoughness = 0.28;
+    const floorMat = new THREE.MeshPhysicalMaterial({ map: woodTex, color: new THREE.Color('#6b3c18'), roughness: 0.32, metalness: 0, envMapIntensity: 0.9 } as THREE.MeshPhysicalMaterialParameters);
+    (floorMat as THREE.MeshPhysicalMaterial).clearcoat = 0.48;
+    (floorMat as THREE.MeshPhysicalMaterial).clearcoatRoughness = 0.22;
     floorMatRef.current = floorMat as unknown as THREE.MeshStandardMaterial;
     const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), floorMat);
     floorMesh.rotation.x = -Math.PI / 2; floorMesh.receiveShadow = true; scene.add(floorMesh);
+
+    // Async PBR texture upgrade — replaces procedural floor texture with real photo-based PBR
+    const PH = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k';
+    const tl = new THREE.TextureLoader();
+    const setTex = (url: string, cb: (t: THREE.Texture) => void) =>
+      tl.load(url, (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; cb(t); }, undefined, () => {/* silent fallback */});
+    setTex(`${PH}/wood_floor_parquet_01/wood_floor_parquet_01_diff_2k.jpg`, t => {
+      t.repeat.set(3, 2.2); t.colorSpace = THREE.SRGBColorSpace;
+      floorMat.map = t; floorMat.color.set(0xffffff); floorMat.needsUpdate = true;
+    });
+    setTex(`${PH}/wood_floor_parquet_01/wood_floor_parquet_01_nor_gl_2k.jpg`, t => {
+      t.repeat.set(3, 2.2);
+      floorMat.normalMap = t; floorMat.normalScale.set(1.2, 1.2); floorMat.needsUpdate = true;
+    });
+    setTex(`${PH}/wood_floor_parquet_01/wood_floor_parquet_01_rough_2k.jpg`, t => {
+      t.repeat.set(3, 2.2);
+      floorMat.roughnessMap = t; floorMat.roughness = 1.0; floorMat.needsUpdate = true;
+    });
+
+    // Async PBR wall upgrade — real plaster texture
+    setTex(`${PH}/plaster_wall_01/plaster_wall_01_nor_gl_2k.jpg`, t => {
+      t.repeat.set(3, 1.8);
+      [backMat, leftMat, rightMat].forEach(m => {
+        m.normalMap = t; m.normalScale.set(0.45, 0.45); m.needsUpdate = true;
+      });
+    });
 
     // Persian rug
     const rugTex = makeRugTex();
@@ -806,423 +886,3 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     addWall(RW, RH, backMat,  [0, RH / 2, -RD / 2], 0,           'back');
     addWall(RD, RH, leftMat,  [-RW / 2, RH / 2, 0], Math.PI / 2,  'left');
     addWall(RD, RH, rightMat, [RW / 2,  RH / 2, 0], -Math.PI / 2, 'right');
-
-    // Decorative mirror on left wall
-    const goldM = metalMat(0xc8a020, 0.14);
-    const mirrorFrameOuter = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.75, 1.28), goldM);
-    mirrorFrameOuter.rotation.y = Math.PI / 2;
-    mirrorFrameOuter.position.set(-RW / 2 + 0.06, 1.85, -0.55);
-    scene.add(mirrorFrameOuter);
-    const mirrorGlass = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.08, 1.56),
-      new THREE.MeshPhysicalMaterial({ color: 0xe8f0f8, metalness: 0.98, roughness: 0.02, envMapIntensity: 2.5 } as THREE.MeshPhysicalMaterialParameters)
-    );
-    mirrorGlass.rotation.y = Math.PI / 2;
-    mirrorGlass.position.set(-RW / 2 + 0.085, 1.85, -0.55);
-    scene.add(mirrorGlass);
-    // Mirror top arc detail
-    const arcTop = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.10, 18, 1, false, 0, Math.PI), goldM);
-    arcTop.rotation.z = Math.PI / 2;
-    arcTop.position.set(-RW / 2 + 0.06, 1.85 + 0.78 + 0.05, -0.55);
-    scene.add(arcTop);
-
-    // Panel moldings on back wall
-    const moldM = new THREE.MeshPhysicalMaterial({ color: 0xfaf8f4, roughness: 0.44, envMapIntensity: 0.65 } as THREE.MeshPhysicalMaterialParameters);
-    const addPanelFrame = (cx: number, cy: number, pw: number, ph: number) => {
-      const z = -RD / 2 + 0.026, th = 0.03, d = 0.016;
-      const bar = (bx: number, by: number, bw: number, bh: number) => {
-        const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, d), moldM);
-        b.position.set(bx, by, z); scene.add(b);
-      };
-      bar(cx, cy + ph / 2 + th / 2, pw + th * 2, th);
-      bar(cx, cy - ph / 2 - th / 2, pw + th * 2, th);
-      bar(cx - pw / 2 - th / 2, cy, th, ph);
-      bar(cx + pw / 2 + th / 2, cy, th, ph);
-    };
-    addPanelFrame(-2.3, 1.28, 1.90, 1.95);
-    addPanelFrame( 0.0, 1.28, 1.90, 1.95);
-    addPanelFrame( 2.3, 1.28, 1.90, 1.95);
-
-    // Landscape painting
-    const artTex = makeArtTex();
-    const artFrameM = new THREE.MeshPhysicalMaterial({ color: 0xf6f2ec, roughness: 0.44, envMapIntensity: 0.5 } as THREE.MeshPhysicalMaterialParameters);
-    const artFrame = new THREE.Mesh(new THREE.BoxGeometry(1.96, 1.24, 0.04), artFrameM);
-    artFrame.position.set(0, 2.06, -RD / 2 + 0.055); scene.add(artFrame);
-    const artMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.76, 1.04),
-      new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.88 }));
-    artMesh.position.set(0, 2.06, -RD / 2 + 0.08); scene.add(artMesh);
-
-    // Right wall window
-    const rWinGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.1),
-      new THREE.MeshStandardMaterial({ color: 0xc4dcf4, emissive: 0x98c4e0, emissiveIntensity: 2.5, transparent: true, opacity: 0.46, roughness: 0, metalness: 0.02 }));
-    rWinGlass.rotation.y = -Math.PI / 2;
-    rWinGlass.position.set(RW / 2 - 0.07, 1.72, 0.8); scene.add(rWinGlass);
-    const rWinFrameM = new THREE.MeshPhysicalMaterial({ color: 0xf0ece5, roughness: 0.38, metalness: 0.06 } as THREE.MeshPhysicalMaterialParameters);
-    const rWinFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.18, 2.88), rWinFrameM);
-    rWinFrame.position.set(RW / 2 - 0.04, 1.72, 0.8); scene.add(rWinFrame);
-    [0, 1].forEach(i => {
-      const b = new THREE.Mesh(i === 0 ? new THREE.BoxGeometry(0.04, 2.10, 0.04) : new THREE.BoxGeometry(0.04, 0.04, 2.80), rWinFrameM);
-      b.position.set(RW / 2 - 0.05, 1.72, 0.8); scene.add(b);
-    });
-
-    // Curtain rod + wavy curtains
-    const rodM = metalMat(0x1e1e1e, 0.16);
-    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 10), rodM);
-    rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
-    const curtM = new THREE.MeshPhysicalMaterial({ color: 0xb89870, roughness: 0.94, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
-    [[2.3, 1], [-0.75, -1]].forEach(([cz, dir]) => {
-      const geo = new THREE.PlaneGeometry(1.4, RH - 0.12, 8, 1);
-      const pos = geo.attributes.position;
-      for (let vi = 0; vi < pos.count; vi++) {
-        const localX = pos.getX(vi);
-        pos.setZ(vi, Math.sin(localX * Math.PI * 2.5 / 1.4) * 0.055 * dir);
-      }
-      geo.computeVertexNormals();
-      const c = new THREE.Mesh(geo, curtM);
-      c.rotation.y = Math.PI / 2;
-      c.position.set(RW / 2 - 0.18, (RH - 0.12) / 2 + 0.06, cz);
-      c.castShadow = true; c.receiveShadow = true; scene.add(c);
-    });
-
-    // Skirting boards
-    const skirtM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.48, envMapIntensity: 0.40 } as THREE.MeshPhysicalMaterialParameters);
-    const skirt = (w: number, p: [number, number, number], ry: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.025), skirtM);
-      m.position.set(...p); m.rotation.y = ry; m.receiveShadow = true; scene.add(m);
-    };
-    skirt(RW, [0, 0.05, -RD / 2 + 0.013], 0);
-    skirt(RD, [-RW / 2 + 0.013, 0.05, 0], Math.PI / 2);
-    skirt(RD, [RW / 2 - 0.013, 0.05, 0], Math.PI / 2);
-
-    // Crown molding
-    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xfafaf8, roughness: 0.58 } as THREE.MeshPhysicalMaterialParameters);
-    const crown = (w: number, p: [number, number, number], ry: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.058, 0.058), crownM);
-      m.position.set(...p); m.rotation.y = ry; scene.add(m);
-    };
-    crown(RW, [0, RH - 0.03, -RD / 2 + 0.03], 0);
-    crown(RD, [-RW / 2 + 0.03, RH - 0.03, 0], Math.PI / 2);
-    crown(RD, [RW / 2 - 0.03, RH - 0.03, 0], Math.PI / 2);
-
-    // BoxHelper for selection
-    const placeholder = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001));
-    const boxHelper = new THREE.BoxHelper(placeholder, 0x00d4ff);
-    boxHelper.visible = false; scene.add(boxHelper); boxHelperRef.current = boxHelper;
-
-    // Pre-loaded neoclassical scene
-    const refScene: Array<{ build: () => THREE.Group; id: string; x: number; z: number; ry: number }> = [
-      { build: () => sofa(2.5, 0xe0dac8),            id: 'sofa3',     x:  1.3,  z:  1.6,  ry: Math.PI },
-      { build: () => armchair(0xc0681c),              id: 'armchair',  x: -0.85, z:  0.38, ry: Math.PI * 0.58 },
-      { build: () => armchair(0xc0681c),              id: 'armchair',  x:  0.5,  z:  0.22, ry: Math.PI * 0.82 },
-      { build: () => coffeeTable(0xf0ebe0, 0xd4c080), id: 'coffee',    x:  0.4,  z:  1.14, ry: 0 },
-      { build: () => sideboard(0xc8a870, 0xc0a040),   id: 'sideboard', x: -3.05, z: -1.2,  ry: Math.PI / 2 },
-      { build: () => arcLamp(0xb8a050, 0xf0ece6),     id: 'arclamp',   x:  2.9,  z:  0.5,  ry: -Math.PI / 4 },
-      { build: () => plant(0x2e5a28),                 id: 'plant',     x: -2.6,  z:  1.4,  ry: 0 },
-      { build: () => stool(0x151515),                 id: 'stool',     x: -0.25, z:  2.35, ry: 0 },
-      { build: () => stool(0x151515),                 id: 'stool',     x:  0.6,  z:  2.55, ry: 0.8 },
-    ];
-    const initPlaced: PlacedItem[] = [];
-    refScene.forEach(({ build, id, x, z, ry }, i) => {
-      const item = CATALOG.find(f => f.id === id)!;
-      const group = build();
-      group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-      group.position.set(x, 0, z); group.rotation.y = ry;
-      scene.add(group);
-      initPlaced.push({ uid: `${id}-init-${i}`, item, group });
-    });
-    placedRef.current = initPlaced; setPlaced([...initPlaced]);
-
-    // Static decorative objects (not draggable)
-    // Vases on sideboard top — sideboard at (-3.05,0,-1.2) ry=PI/2
-    // After rotation: sideboard length along world Z, handles face toward x=-2.84
-    const v1 = vase(0xc8a87a, 0.44);
-    v1.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    v1.position.set(-2.86, 0.86, -1.72); scene.add(v1);
-
-    const v2 = vase(0x4a6898, 0.30);
-    v2.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    v2.position.set(-2.86, 0.86, -0.74); scene.add(v2);
-
-    const bs = bookStack();
-    bs.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    bs.position.set(-2.90, 0.86, -1.22);
-    bs.rotation.y = 0.3;
-    scene.add(bs);
-
-    // Throw pillows on sofa (sofa at x=1.3,z=1.6,ry=PI → back cushions at world z≈1.92)
-    const pilM1 = fabricMat(0x8a4418);
-    const pilM2 = fabricMat(0x2c4462);
-    const pG1 = new RoundedBoxGeometry(0.30, 0.22, 0.24, 3, 0.055);
-    const pG2 = new RoundedBoxGeometry(0.26, 0.20, 0.22, 3, 0.048);
-    const pil1 = new THREE.Mesh(pG1, pilM1);
-    pil1.position.set(0.78, 0.52, 1.76); pil1.rotation.y = Math.PI + 0.18; pil1.castShadow = true; scene.add(pil1);
-    const pil2 = new THREE.Mesh(pG2, pilM2);
-    pil2.position.set(1.88, 0.52, 1.78); pil2.rotation.y = Math.PI - 0.16; pil2.castShadow = true; scene.add(pil2);
-    // Third small square pillow in center, slightly tilted
-    const pG3 = new RoundedBoxGeometry(0.24, 0.20, 0.22, 3, 0.048);
-    const pil3 = new THREE.Mesh(pG3, fabricMat(0xc8a868));
-    pil3.position.set(1.33, 0.52, 1.77); pil3.rotation.y = Math.PI + 0.08; pil3.rotation.z = 0.06; pil3.castShadow = true; scene.add(pil3);
-
-    // Decorative candle on coffee table (table at x=0.4,z=1.14,top y=0.44)
-    const candleWax = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.028, 0.11, 12),
-      new THREE.MeshPhysicalMaterial({ color: 0xf2e6cc, roughness: 0.92, metalness: 0 } as THREE.MeshPhysicalMaterialParameters)
-    );
-    candleWax.position.set(0.42, 0.495, 1.44); candleWax.castShadow = true; scene.add(candleWax);
-    const candleFlame = new THREE.Mesh(
-      new THREE.SphereGeometry(0.011, 8, 6),
-      new THREE.MeshStandardMaterial({ color: 0xffcc44, emissive: 0xffaa00, emissiveIntensity: 5.0, roughness: 0.02 })
-    );
-    candleFlame.scale.y = 1.65;
-    candleFlame.position.set(0.42, 0.563, 1.44); scene.add(candleFlame);
-    const candleLight = new THREE.PointLight(0xff8822, 0.70, 1.6);
-    candleLight.position.set(0.42, 0.58, 1.44); scene.add(candleLight);
-
-    // Pointer events
-    const raycaster = new THREE.Raycaster();
-    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    let potDrag: { uid: string; group: THREE.Group } | null = null;
-    let isDrag = false, downX = 0, downY = 0;
-    const dragOffset = new THREE.Vector3();
-
-    const toNDC = (cx: number, cy: number) => {
-      const r = canvas.getBoundingClientRect();
-      return new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
-    };
-
-    const onPD = (e: PointerEvent) => {
-      downX = e.clientX; downY = e.clientY; isDrag = false;
-      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-      const meshes: THREE.Object3D[] = [];
-      placedRef.current.forEach(p => p.group.traverse(c => { if (c instanceof THREE.Mesh) meshes.push(c); }));
-      if (meshes.length) {
-        const hits = raycaster.intersectObjects(meshes);
-        if (hits.length) {
-          let obj: THREE.Object3D = hits[0].object;
-          while (obj.parent && !(obj.parent instanceof THREE.Scene)) obj = obj.parent;
-          const found = placedRef.current.find(p => p.group === obj);
-          if (found) {
-            potDrag = { uid: found.uid, group: found.group };
-            controls.enabled = false; canvas.setPointerCapture(e.pointerId);
-            const pt = new THREE.Vector3();
-            raycaster.ray.intersectPlane(floorPlane, pt);
-            dragOffset.set(found.group.position.x - pt.x, 0, found.group.position.z - pt.z);
-            return;
-          }
-        }
-      }
-    };
-
-    const onPM = (e: PointerEvent) => {
-      if (!potDrag) return;
-      if (!isDrag && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) return;
-      isDrag = true;
-      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-      const pt = new THREE.Vector3(); raycaster.ray.intersectPlane(floorPlane, pt);
-      potDrag.group.position.x = Math.max(-RW / 2 + 0.5, Math.min(RW / 2 - 0.5, pt.x + dragOffset.x));
-      potDrag.group.position.z = Math.max(-RD / 2 + 0.5, Math.min(RD / 2 - 0.5, pt.z + dragOffset.z));
-      if (boxHelperRef.current?.visible) boxHelperRef.current.setFromObject(potDrag.group);
-    };
-
-    const onPU = (e: PointerEvent) => {
-      controls.enabled = true;
-      if (potDrag) {
-        if (!isDrag) {
-          setSelectedUid(potDrag.uid); selectedGrpRef.current = potDrag.group;
-          if (boxHelperRef.current) { boxHelperRef.current.setFromObject(potDrag.group); boxHelperRef.current.visible = true; }
-        }
-        canvas.releasePointerCapture(e.pointerId); potDrag = null; isDrag = false;
-      } else if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
-        raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-        const wallMeshes = Array.from(wallMeshToId.current.keys());
-        const hits = raycaster.intersectObjects(wallMeshes);
-        if (hits.length) {
-          const wId = wallMeshToId.current.get(hits[0].object as THREE.Mesh);
-          if (wId) { setSelectedWall(wId); setActiveTab('walls'); }
-        } else {
-          setSelectedUid(null); selectedGrpRef.current = null;
-          if (boxHelperRef.current) boxHelperRef.current.visible = false;
-        }
-      }
-    };
-
-    canvas.addEventListener('pointerdown', onPD);
-    canvas.addEventListener('pointermove', onPM);
-    canvas.addEventListener('pointerup', onPU);
-
-    const onResize = () => {
-      const w = canvas.parentElement?.clientWidth || 800, h = canvas.parentElement?.clientHeight || 600;
-      camera.aspect = w / h; camera.updateProjectionMatrix();
-      renderer.setSize(w, h); composer.setSize(w, h);
-    };
-    window.addEventListener('resize', onResize);
-
-    const animate = () => { rafRef.current = requestAnimationFrame(animate); controls.update(); composer.render(); };
-    animate();
-
-    return () => {
-      window.removeEventListener('resize', onResize);
-      canvas.removeEventListener('pointerdown', onPD);
-      canvas.removeEventListener('pointermove', onPM);
-      canvas.removeEventListener('pointerup', onPU);
-      cancelAnimationFrame(rafRef.current);
-      composer.dispose(); renderer.dispose();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function addFurniture(item: FurnitureItem) {
-    const scene = sceneRef.current; if (!scene) return;
-    const group = buildFurniture(item);
-    group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    const a = Math.random() * Math.PI * 2, r = 0.5 + Math.random() * 1.6;
-    group.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-    group.rotation.y = (Math.random() - 0.5) * Math.PI * 0.5;
-    scene.add(group);
-    const uid = `${item.id}-${Date.now()}`;
-    placedRef.current = [...placedRef.current, { uid, item, group }];
-    setPlaced([...placedRef.current]);
-    setSelectedUid(uid); selectedGrpRef.current = group;
-    if (boxHelperRef.current) { boxHelperRef.current.setFromObject(group); boxHelperRef.current.visible = true; }
-  }
-
-  function removeItem(uid: string) {
-    const scene = sceneRef.current; if (!scene) return;
-    const found = placedRef.current.find(p => p.uid === uid);
-    if (found) {
-      scene.remove(found.group);
-      found.group.traverse(c => {
-        if (c instanceof THREE.Mesh) {
-          c.geometry.dispose();
-          (Array.isArray(c.material) ? c.material : [c.material]).forEach((m: THREE.Material) => m.dispose());
-        }
-      });
-    }
-    placedRef.current = placedRef.current.filter(p => p.uid !== uid);
-    setPlaced([...placedRef.current]);
-    if (selectedUid === uid) { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }
-  }
-
-  function rotateSelected(dir: 1 | -1) { if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += dir * Math.PI / 4; }
-  function setWallColor(id: WallId, hex: string) { setWallColors(prev => ({ ...prev, [id]: hex })); }
-
-  const filtered = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(f => f.category === activeCategory);
-
-  return (
-    <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.52)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#64748b', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-          Arrastra muebles · Órbita con ratón · Clic en pared para pintarla
-        </div>
-        <button onClick={() => setPanelOpen(o => !o)} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem' }}>
-          {panelOpen ? '▶ Ocultar' : '◀ Panel'}
-        </button>
-        {selectedUid && (
-          <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(0,212,255,0.35)', borderRadius: 10, padding: '6px 10px', backdropFilter: 'blur(6px)' }}>
-            <button onClick={() => rotateSelected(-1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↺</button>
-            <button onClick={() => rotateSelected(1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↻</button>
-            <button onClick={() => removeItem(selectedUid)} style={{ background: '#2d1c1c', border: '1px solid #7f1d1d', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>🗑</button>
-            <button onClick={() => { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }} style={{ background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', padding: '5px 8px', fontSize: '1rem' }}>✕</button>
-          </div>
-        )}
-      </div>
-
-      {panelOpen && (
-        <div style={{ width: 282, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
-            {(['furniture', 'walls', 'floor'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: '11px 4px', background: activeTab === tab ? '#1e293b' : 'transparent', border: 'none', color: activeTab === tab ? '#e2e8f0' : '#64748b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent' }}>
-                {tab === 'furniture' ? '🛋️ Muebles' : tab === 'walls' ? '🎨 Paredes' : '🪵 Suelo'}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === 'furniture' && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', gap: 4, padding: '8px 10px', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
-                {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ padding: '4px 10px', borderRadius: 16, border: 'none', background: activeCategory === cat ? '#3b82f6' : '#1e293b', color: activeCategory === cat ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: activeCategory === cat ? 600 : 400 }}>{cat}</button>
-                ))}
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
-                {filtered.map(item => (
-                  <button key={item.id} onClick={() => addFurniture(item)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#3b82f6')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#334155')}>
-                    <span style={{ fontSize: '1.4rem' }}>{item.emoji}</span>
-                    <div><div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</div><div style={{ fontSize: '0.7rem', color: '#475569' }}>{item.category}</div></div>
-                    <span style={{ marginLeft: 'auto', color: '#3b82f6', fontSize: '1.1rem' }}>+</span>
-                  </button>
-                ))}
-              </div>
-              {placed.length > 0 && (
-                <div style={{ borderTop: '1px solid #1f2937', padding: '10px', flexShrink: 0 }}>
-                  <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>En la habitación ({placed.length})</p>
-                  <div style={{ maxHeight: 110, overflowY: 'auto' }}>
-                    {placed.map(p => (
-                      <div key={p.uid} onClick={() => { setSelectedUid(p.uid); selectedGrpRef.current = p.group; if (boxHelperRef.current) { boxHelperRef.current.setFromObject(p.group); boxHelperRef.current.visible = true; } }}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 6, background: selectedUid === p.uid ? '#1e3a5f' : 'transparent', marginBottom: 2, cursor: 'pointer' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{p.item.emoji} {p.item.name}</span>
-                        <button onClick={ev => { ev.stopPropagation(); removeItem(p.uid); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' }}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'walls' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selecciona pared</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
-                {(['back', 'left', 'right', 'ceiling'] as WallId[]).map(id => (
-                  <button key={id} onClick={() => setSelectedWall(id)} style={{ padding: '8px 6px', borderRadius: 8, border: `2px solid ${selectedWall === id ? '#3b82f6' : '#334155'}`, background: selectedWall === id ? '#1e3a5f' : '#1e293b', color: selectedWall === id ? '#e2e8f0' : '#94a3b8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: selectedWall === id ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 14, height: 14, borderRadius: 3, background: wallColors[id], border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0, display: 'inline-block' }} />
-                    {WALL_LABELS[id]}
-                  </button>
-                ))}
-              </div>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Color</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7, marginBottom: 14 }}>
-                {WALL_COLORS.map(c => (
-                  <button key={c.hex} onClick={() => setWallColor(selectedWall, c.hex)} style={{ padding: '9px 8px', borderRadius: 8, border: `2px solid ${wallColors[selectedWall] === c.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 4, background: c.hex, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, display: 'block' }} />
-                    <span style={{ fontSize: '0.73rem', color: wallColors[selectedWall] === c.hex ? '#e2e8f0' : '#94a3b8', fontWeight: wallColors[selectedWall] === c.hex ? 600 : 400 }}>{c.name}</span>
-                  </button>
-                ))}
-              </div>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 8px' }}>Personalizado</p>
-              <input type="color" value={wallColors[selectedWall]} onChange={e => setWallColor(selectedWall, e.target.value)} style={{ width: '100%', height: 38, borderRadius: 8, border: '1px solid #334155', background: 'transparent', cursor: 'pointer', padding: 2, marginBottom: 12 }} />
-              <button onClick={() => setWallColors({ back: wallColors[selectedWall], left: wallColors[selectedWall], right: wallColors[selectedWall], ceiling: wallColors[selectedWall] })} style={{ width: '100%', padding: '9px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}>
-                Aplicar a todas las paredes
-              </button>
-            </div>
-          )}
-
-          {activeTab === 'floor' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tono de suelo</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7 }}>
-                {FLOOR_TINTS.map(t => (
-                  <button key={t.hex} onClick={() => setFloorTint(t.hex)} style={{ padding: '10px 8px', borderRadius: 8, border: `2px solid ${floorTint === t.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 44, height: 28, borderRadius: 6, background: t.hex === '#ffffff' ? 'linear-gradient(135deg,#e8d5a0 0%,#c9a97a 50%,#a07840 100%)' : t.hex, border: '1px solid rgba(255,255,255,0.12)', display: 'block' }} />
-                    <span style={{ fontSize: '0.72rem', color: floorTint === t.hex ? '#e2e8f0' : '#94a3b8', fontWeight: floorTint === t.hex ? 600 : 400 }}>{t.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ padding: '14px 12px', borderTop: '1px solid #1f2937', flexShrink: 0 }}>
-            <a href="/login" style={{ display: 'block', padding: '11px', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', color: '#fff', borderRadius: 8, textAlign: 'center', fontWeight: 600, fontSize: '0.9rem', textDecoration: 'none', marginBottom: 8 }}>
-              Guardar y crear cuenta →
-            </a>
-            <p style={{ color: '#475569', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>Gratis · Sin tarjeta · 2 tours incluidos</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
