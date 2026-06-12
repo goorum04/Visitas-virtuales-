@@ -13,7 +13,6 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 
 type WallId = 'back' | 'left' | 'right' | 'ceiling';
 interface FurnitureItem { id: string; name: string; category: string; emoji: string; primary: number; secondary?: number; }
@@ -62,7 +61,7 @@ const CATALOG: FurnitureItem[] = [
 const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Dormit.', 'Electr.', 'Decor'];
 const WALL_LABELS: Record<WallId, string> = { back: 'Fondo', left: 'Izquierda', right: 'Derecha', ceiling: 'Techo' };
 
-// ── Textures ─────────────────────────────────────────────────────────────────
+// ── Textures ───────────────────────────────────────────────────────────────
 
 function makeWoodTex(): THREE.CanvasTexture {
   const S = 2048, cv = document.createElement('canvas');
@@ -240,7 +239,7 @@ function makeRugTex(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-// ── Materials ─────────────────────────────────────────────────────────────────
+// ── Materials ───────────────────────────────────────────────────────────────
 
 function physMat(color: number | string, rough: number, metal = 0): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: 0.7 });
@@ -274,7 +273,7 @@ function metalMat(col: number, rough = 0.18): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0.96, envMapIntensity: 2.0 });
 }
 
-// ── Furniture ─────────────────────────────────────────────────────────────────
+// ── Furniture ───────────────────────────────────────────────────────────────
 
 function sofa(w: number, col: number): THREE.Group {
   const g = new THREE.Group();
@@ -670,7 +669,7 @@ function buildFurniture(item: FurnitureItem): THREE.Group {
   }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ───────────────────────────────────────────────────────────────
 
 export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: string | null }) {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -723,7 +722,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.22;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.04;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
@@ -766,38 +765,27 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.15, 0.45, 0.86);
     composer.addPass(bloom);
     // Depth of field — the single biggest "looks like a real photo" effect
-    const bokeh = new BokehPass(scene, camera, { focus: 5.8, aperture: 0.000035, maxblur: 0.008 });
+    const bokeh = new BokehPass(scene, camera, { focus: 6.0, aperture: 0.000016, maxblur: 0.004 });
     composer.addPass(bokeh);
     composer.addPass(new OutputPass());
 
-    // Photorealistic lighting — low ambient, strong directional, soft area fills
-    RectAreaLightUniformsLib.init();
-    scene.add(new THREE.AmbientLight(0xfff0d8, 0.14));
+    // Lighting — one key light, deep shadows, photorealistic contrast
+    scene.add(new THREE.AmbientLight(0xfff0d8, 0.08));
 
-    // Main sunlight through right-wall window — sharp shadows, warm
-    const winLight = new THREE.SpotLight(0xfff4e0, 18, 22, Math.PI / 6.5, 0.28, 1.2);
-    winLight.position.set(6.8, 4.8, 1.0); winLight.target.position.set(-0.5, 0, 0.5);
+    // Sunlight through right-wall window — single dominant light
+    const winLight = new THREE.SpotLight(0xfffbe8, 8.5, 24, Math.PI / 6.5, 0.32, 1.4);
+    winLight.position.set(6.8, 4.8, 1.0); winLight.target.position.set(-0.5, 0.2, 0.5);
     winLight.castShadow = true; winLight.shadow.mapSize.set(4096, 4096);
     winLight.shadow.camera.near = 1; winLight.shadow.camera.far = 24;
-    winLight.shadow.bias = -0.0008; winLight.shadow.normalBias = 0.018;
+    winLight.shadow.bias = -0.0008; winLight.shadow.normalBias = 0.016;
     scene.add(winLight); scene.add(winLight.target);
 
-    // Soft cool fill from opposite side (sky bounce)
-    const skyFill = new THREE.DirectionalLight(0xc8dcf0, 0.55);
+    // Very subtle cool sky bounce from the shadowed side
+    const skyFill = new THREE.DirectionalLight(0xc8d8f0, 0.18);
     skyFill.position.set(-5, 4, 3); scene.add(skyFill);
 
-    // Warm RectAreaLight — simulates light bouncing off back wall
-    const wallBounce = new THREE.RectAreaLight(0xffe8c8, 1.8, 5.5, 2.2);
-    wallBounce.position.set(0, 1.5, -2.8); wallBounce.lookAt(0, 1.5, 2);
-    scene.add(wallBounce);
-
-    // Soft warm fill from left — simulates reflected light from floor/furniture
-    const leftFill = new THREE.RectAreaLight(0xfff0d8, 0.9, 3.0, 2.5);
-    leftFill.position.set(-3.2, 1.2, 0.5); leftFill.lookAt(0, 0.8, 0.5);
-    scene.add(leftFill);
-
-    // Chandelier PointLight — warm, medium radius
-    const ceilLight = new THREE.PointLight(0xfff0c8, 2.2, 10);
+    // Chandelier — warm glow, moderate, local
+    const ceilLight = new THREE.PointLight(0xffecc8, 1.5, 9);
     ceilLight.position.set(0, 2.38, 0.4);
     ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(1024, 1024); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
@@ -949,360 +937,334 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const rodM = metalMat(0x1e1e1e, 0.16);
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 10), rodM);
     rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
-    const curtM = new THREE.MeshPhysicalMaterial({ color: 0xb89870, roughness: 0.94, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
-    [[2.3, 1], [-0.75, -1]].forEach(([cz, dir]) => {
-      const geo = new THREE.PlaneGeometry(1.4, RH - 0.12, 8, 1);
-      const pos = geo.attributes.position;
-      for (let vi = 0; vi < pos.count; vi++) {
-        const localX = pos.getX(vi);
-        pos.setZ(vi, Math.sin(localX * Math.PI * 2.5 / 1.4) * 0.055 * dir);
+    const curtainM = new THREE.MeshPhysicalMaterial({ color: 0xe8e0d0, roughness: 0.86, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
+    [-1.65, 2.55].forEach(czOff => {
+      const shape = new THREE.Shape();
+      const cW = 0.85, cH = RH - 0.18;
+      for (let v = 0; v <= 12; v++) {
+        const t2 = v / 12, wave = Math.sin(t2 * Math.PI * 2.5) * 0.055;
+        v === 0 ? shape.moveTo(wave, t2 * cH) : shape.lineTo(wave, t2 * cH);
       }
-      geo.computeVertexNormals();
-      const c = new THREE.Mesh(geo, curtM);
-      c.rotation.y = Math.PI / 2;
-      c.position.set(RW / 2 - 0.18, (RH - 0.12) / 2 + 0.06, cz);
-      c.castShadow = true; c.receiveShadow = true; scene.add(c);
+      for (let v = 12; v >= 0; v--) {
+        const t2 = v / 12, wave = Math.sin(t2 * Math.PI * 2.5) * 0.055;
+        shape.lineTo(wave + cW, t2 * cH);
+      }
+      shape.closePath();
+      const curtain = new THREE.Mesh(new THREE.ShapeGeometry(shape), curtainM);
+      curtain.rotation.y = -Math.PI / 2;
+      curtain.position.set(RW / 2 - 0.08, 0.16, czOff);
+      curtain.castShadow = true; curtain.receiveShadow = true;
+      scene.add(curtain);
     });
 
-    // Skirting boards
-    const skirtM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.48, envMapIntensity: 0.40 } as THREE.MeshPhysicalMaterialParameters);
-    const skirt = (w: number, p: [number, number, number], ry: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.025), skirtM);
-      m.position.set(...p); m.rotation.y = ry; m.receiveShadow = true; scene.add(m);
-    };
-    skirt(RW, [0, 0.05, -RD / 2 + 0.013], 0);
-    skirt(RD, [-RW / 2 + 0.013, 0.05, 0], Math.PI / 2);
-    skirt(RD, [RW / 2 - 0.013, 0.05, 0], Math.PI / 2);
+    // Skirting board (baseboard)
+    const skirtM = new THREE.MeshPhysicalMaterial({ color: 0xf0ede8, roughness: 0.45, envMapIntensity: 0.5 } as THREE.MeshPhysicalMaterialParameters);
+    [
+      { w: RW,  pos: [0, 0.065,  -RD / 2 + 0.008] as [number,number,number], ry: 0 },
+      { w: RD,  pos: [-RW / 2 + 0.008, 0.065, 0]   as [number,number,number], ry: Math.PI / 2 },
+      { w: RD,  pos: [RW / 2 - 0.008,  0.065, 0]   as [number,number,number], ry: -Math.PI / 2 },
+    ].forEach(({ w, pos, ry }) => {
+      const sk = new THREE.Mesh(new THREE.BoxGeometry(w, 0.13, 0.012), skirtM);
+      sk.position.set(...pos); sk.rotation.y = ry; scene.add(sk);
+    });
 
-    // Crown molding
-    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xfafaf8, roughness: 0.58 } as THREE.MeshPhysicalMaterialParameters);
-    const crown = (w: number, p: [number, number, number], ry: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.058, 0.058), crownM);
-      m.position.set(...p); m.rotation.y = ry; scene.add(m);
+    // Crown molding (ceiling–wall junction)
+    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xfaf8f5, roughness: 0.38, envMapIntensity: 0.6 } as THREE.MeshPhysicalMaterialParameters);
+    [
+      { w: RW,  pos: [0, RH - 0.05,  -RD / 2 + 0.012] as [number,number,number], ry: 0 },
+      { w: RD,  pos: [-RW / 2 + 0.012, RH - 0.05, 0]   as [number,number,number], ry: Math.PI / 2 },
+      { w: RD,  pos: [RW / 2 - 0.012,  RH - 0.05, 0]   as [number,number,number], ry: -Math.PI / 2 },
+    ].forEach(({ w, pos, ry }) => {
+      const cm = new THREE.Mesh(new THREE.BoxGeometry(w, 0.10, 0.012), crownM);
+      cm.position.set(...pos); cm.rotation.y = ry; scene.add(cm);
+    });
+
+    // Resize observer
+    const ro = new ResizeObserver(() => {
+      const pw = canvas.parentElement?.clientWidth || W;
+      const ph = canvas.parentElement?.clientHeight || H;
+      renderer.setSize(pw, ph);
+      composer.setSize(pw, ph);
+      camera.aspect = pw / ph;
+      camera.updateProjectionMatrix();
+    });
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
+
+    let dragState: { uid: string; startX: number; startZ: number; mouseX: number; mouseZ: number } | null = null;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const items = placedRef.current;
+      let hit: PlacedItem | null = null;
+      let minD = Infinity;
+      for (const pi of items) {
+        const meshes: THREE.Mesh[] = [];
+        pi.group.traverse(c => { if (c instanceof THREE.Mesh) meshes.push(c); });
+        const hits = ray.intersectObjects(meshes, false);
+        if (hits.length > 0 && hits[0].distance < minD) { minD = hits[0].distance; hit = pi; }
+      }
+      if (hit) {
+        const floorHits = ray.intersectObjects([floorMesh]);
+        if (floorHits.length > 0) {
+          dragState = { uid: hit.uid, startX: hit.group.position.x, startZ: hit.group.position.z, mouseX: floorHits[0].point.x, mouseZ: floorHits[0].point.z };
+          controls.enabled = false;
+          setSelectedUid(hit.uid);
+          selectedGrpRef.current = hit.group;
+          if (boxHelperRef.current) { boxHelperRef.current.setFromObject(hit.group); boxHelperRef.current.visible = true; }
+        }
+      } else {
+        // Check wall click
+        const wallMeshes = [...wallMeshToId.current.keys()];
+        const wallHits = ray.intersectObjects(wallMeshes);
+        if (wallHits.length > 0) {
+          const wid = wallMeshToId.current.get(wallHits[0].object as THREE.Mesh);
+          if (wid) setSelectedWall(wid);
+        }
+      }
     };
-    crown(RW, [0, RH - 0.03, -RD / 2 + 0.03], 0);
-    crown(RD, [-RW / 2 + 0.03, RH - 0.03, 0], Math.PI / 2);
-    crown(RD, [RW / 2 - 0.03, RH - 0.03, 0], Math.PI / 2);
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!dragState) return;
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const hits = ray.intersectObjects([floorMesh]);
+      if (hits.length > 0) {
+        const dx = hits[0].point.x - dragState.mouseX;
+        const dz = hits[0].point.z - dragState.mouseZ;
+        const item = placedRef.current.find(p => p.uid === dragState!.uid);
+        if (item) {
+          item.group.position.x = dragState.startX + dx;
+          item.group.position.z = dragState.startZ + dz;
+          if (boxHelperRef.current) boxHelperRef.current.setFromObject(item.group);
+        }
+      }
+    };
+
+    const onPointerUp = () => { dragState = null; controls.enabled = true; };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
 
     // BoxHelper for selection
-    const placeholder = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001));
-    const boxHelper = new THREE.BoxHelper(placeholder, 0x00d4ff);
-    boxHelper.visible = false; scene.add(boxHelper); boxHelperRef.current = boxHelper;
+    const bh = new THREE.BoxHelper(new THREE.Object3D(), 0x5ba3f5);
+    bh.visible = false; scene.add(bh); boxHelperRef.current = bh;
 
-    // Pre-loaded neoclassical scene
-    const refScene: Array<{ build: () => THREE.Group; id: string; x: number; z: number; ry: number }> = [
-      { build: () => sofa(2.5, 0xe0dac8),            id: 'sofa3',     x:  1.3,  z:  1.6,  ry: Math.PI },
-      { build: () => armchair(0xc0681c),              id: 'armchair',  x: -0.85, z:  0.38, ry: Math.PI * 0.58 },
-      { build: () => armchair(0xc0681c),              id: 'armchair',  x:  0.5,  z:  0.22, ry: Math.PI * 0.82 },
-      { build: () => coffeeTable(0xf0ebe0, 0xd4c080), id: 'coffee',    x:  0.4,  z:  1.14, ry: 0 },
-      { build: () => sideboard(0xc8a870, 0xc0a040),   id: 'sideboard', x: -3.05, z: -1.2,  ry: Math.PI / 2 },
-      { build: () => arcLamp(0xb8a050, 0xf0ece6),     id: 'arclamp',   x:  2.9,  z:  0.5,  ry: -Math.PI / 4 },
-      { build: () => plant(0x2e5a28),                 id: 'plant',     x: -2.6,  z:  1.4,  ry: 0 },
-      { build: () => stool(0x151515),                 id: 'stool',     x: -0.25, z:  2.35, ry: 0 },
-      { build: () => stool(0x151515),                 id: 'stool',     x:  0.6,  z:  2.55, ry: 0.8 },
-    ];
-    const initPlaced: PlacedItem[] = [];
-    refScene.forEach(({ build, id, x, z, ry }, i) => {
-      const item = CATALOG.find(f => f.id === id)!;
-      const group = build();
-      group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-      group.position.set(x, 0, z); group.rotation.y = ry;
-      scene.add(group);
-      initPlaced.push({ uid: `${id}-init-${i}`, item, group });
-    });
-    placedRef.current = initPlaced; setPlaced([...initPlaced]);
-
-    // Static decorative objects (not draggable)
-    // Vases on sideboard top — sideboard at (-3.05,0,-1.2) ry=PI/2
-    // After rotation: sideboard length along world Z, handles face toward x=-2.84
-    const v1 = vase(0xc8a87a, 0.44);
-    v1.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    v1.position.set(-2.86, 0.86, -1.72); scene.add(v1);
-
-    const v2 = vase(0x4a6898, 0.30);
-    v2.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    v2.position.set(-2.86, 0.86, -0.74); scene.add(v2);
-
-    const bs = bookStack();
-    bs.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    bs.position.set(-2.90, 0.86, -1.22);
-    bs.rotation.y = 0.3;
-    scene.add(bs);
-
-    // Throw pillows on sofa (sofa at x=1.3,z=1.6,ry=PI → back cushions at world z≈1.92)
-    const pilM1 = fabricMat(0x8a4418);
-    const pilM2 = fabricMat(0x2c4462);
-    const pG1 = new RoundedBoxGeometry(0.30, 0.22, 0.24, 3, 0.055);
-    const pG2 = new RoundedBoxGeometry(0.26, 0.20, 0.22, 3, 0.048);
-    const pil1 = new THREE.Mesh(pG1, pilM1);
-    pil1.position.set(0.78, 0.52, 1.76); pil1.rotation.y = Math.PI + 0.18; pil1.castShadow = true; scene.add(pil1);
-    const pil2 = new THREE.Mesh(pG2, pilM2);
-    pil2.position.set(1.88, 0.52, 1.78); pil2.rotation.y = Math.PI - 0.16; pil2.castShadow = true; scene.add(pil2);
-    // Third small square pillow in center, slightly tilted
-    const pG3 = new RoundedBoxGeometry(0.24, 0.20, 0.22, 3, 0.048);
-    const pil3 = new THREE.Mesh(pG3, fabricMat(0xc8a868));
-    pil3.position.set(1.33, 0.52, 1.77); pil3.rotation.y = Math.PI + 0.08; pil3.rotation.z = 0.06; pil3.castShadow = true; scene.add(pil3);
-
-    // Decorative candle on coffee table (table at x=0.4,z=1.14,top y=0.44)
-    const candleWax = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.028, 0.11, 12),
-      new THREE.MeshPhysicalMaterial({ color: 0xf2e6cc, roughness: 0.92, metalness: 0 } as THREE.MeshPhysicalMaterialParameters)
-    );
-    candleWax.position.set(0.42, 0.495, 1.44); candleWax.castShadow = true; scene.add(candleWax);
-    const candleFlame = new THREE.Mesh(
-      new THREE.SphereGeometry(0.011, 8, 6),
-      new THREE.MeshStandardMaterial({ color: 0xffcc44, emissive: 0xffaa00, emissiveIntensity: 5.0, roughness: 0.02 })
-    );
-    candleFlame.scale.y = 1.65;
-    candleFlame.position.set(0.42, 0.563, 1.44); scene.add(candleFlame);
-    const candleLight = new THREE.PointLight(0xff8822, 0.70, 1.6);
-    candleLight.position.set(0.42, 0.58, 1.44); scene.add(candleLight);
-
-    // Pointer events
-    const raycaster = new THREE.Raycaster();
-    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    let potDrag: { uid: string; group: THREE.Group } | null = null;
-    let isDrag = false, downX = 0, downY = 0;
-    const dragOffset = new THREE.Vector3();
-
-    const toNDC = (cx: number, cy: number) => {
-      const r = canvas.getBoundingClientRect();
-      return new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    let animId = 0;
+    const animate = () => {
+      animId = requestAnimationFrame(animate);
+      controls.update();
+      composer.render();
+      if (boxHelperRef.current?.visible && selectedGrpRef.current) boxHelperRef.current.setFromObject(selectedGrpRef.current);
     };
-
-    const onPD = (e: PointerEvent) => {
-      downX = e.clientX; downY = e.clientY; isDrag = false;
-      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-      const meshes: THREE.Object3D[] = [];
-      placedRef.current.forEach(p => p.group.traverse(c => { if (c instanceof THREE.Mesh) meshes.push(c); }));
-      if (meshes.length) {
-        const hits = raycaster.intersectObjects(meshes);
-        if (hits.length) {
-          let obj: THREE.Object3D = hits[0].object;
-          while (obj.parent && !(obj.parent instanceof THREE.Scene)) obj = obj.parent;
-          const found = placedRef.current.find(p => p.group === obj);
-          if (found) {
-            potDrag = { uid: found.uid, group: found.group };
-            controls.enabled = false; canvas.setPointerCapture(e.pointerId);
-            const pt = new THREE.Vector3();
-            raycaster.ray.intersectPlane(floorPlane, pt);
-            dragOffset.set(found.group.position.x - pt.x, 0, found.group.position.z - pt.z);
-            return;
-          }
-        }
-      }
-    };
-
-    const onPM = (e: PointerEvent) => {
-      if (!potDrag) return;
-      if (!isDrag && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) return;
-      isDrag = true;
-      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-      const pt = new THREE.Vector3(); raycaster.ray.intersectPlane(floorPlane, pt);
-      potDrag.group.position.x = Math.max(-RW / 2 + 0.5, Math.min(RW / 2 - 0.5, pt.x + dragOffset.x));
-      potDrag.group.position.z = Math.max(-RD / 2 + 0.5, Math.min(RD / 2 - 0.5, pt.z + dragOffset.z));
-      if (boxHelperRef.current?.visible) boxHelperRef.current.setFromObject(potDrag.group);
-    };
-
-    const onPU = (e: PointerEvent) => {
-      controls.enabled = true;
-      if (potDrag) {
-        if (!isDrag) {
-          setSelectedUid(potDrag.uid); selectedGrpRef.current = potDrag.group;
-          if (boxHelperRef.current) { boxHelperRef.current.setFromObject(potDrag.group); boxHelperRef.current.visible = true; }
-        }
-        canvas.releasePointerCapture(e.pointerId); potDrag = null; isDrag = false;
-      } else if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
-        raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
-        const wallMeshes = Array.from(wallMeshToId.current.keys());
-        const hits = raycaster.intersectObjects(wallMeshes);
-        if (hits.length) {
-          const wId = wallMeshToId.current.get(hits[0].object as THREE.Mesh);
-          if (wId) { setSelectedWall(wId); setActiveTab('walls'); }
-        } else {
-          setSelectedUid(null); selectedGrpRef.current = null;
-          if (boxHelperRef.current) boxHelperRef.current.visible = false;
-        }
-      }
-    };
-
-    canvas.addEventListener('pointerdown', onPD);
-    canvas.addEventListener('pointermove', onPM);
-    canvas.addEventListener('pointerup', onPU);
-
-    const onResize = () => {
-      const w = canvas.parentElement?.clientWidth || 800, h = canvas.parentElement?.clientHeight || 600;
-      camera.aspect = w / h; camera.updateProjectionMatrix();
-      renderer.setSize(w, h); composer.setSize(w, h);
-    };
-    window.addEventListener('resize', onResize);
-
-    const animate = () => { rafRef.current = requestAnimationFrame(animate); controls.update(); composer.render(); };
-    animate();
+    animate(); rafRef.current = animId;
 
     return () => {
-      window.removeEventListener('resize', onResize);
-      canvas.removeEventListener('pointerdown', onPD);
-      canvas.removeEventListener('pointermove', onPM);
-      canvas.removeEventListener('pointerup', onPU);
-      cancelAnimationFrame(rafRef.current);
-      composer.dispose(); renderer.dispose();
+      cancelAnimationFrame(animId);
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      ro.disconnect();
+      renderer.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function addFurniture(item: FurnitureItem) {
+  const addItem = (item: FurnitureItem) => {
     const scene = sceneRef.current; if (!scene) return;
+    const uid = `${item.id}_${Date.now()}`;
     const group = buildFurniture(item);
-    group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
-    const a = Math.random() * Math.PI * 2, r = 0.5 + Math.random() * 1.6;
-    group.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-    group.rotation.y = (Math.random() - 0.5) * Math.PI * 0.5;
+    group.position.set((Math.random() - 0.5) * 4, 0, (Math.random() - 0.5) * 3 + 0.5);
     scene.add(group);
-    const uid = `${item.id}-${Date.now()}`;
-    placedRef.current = [...placedRef.current, { uid, item, group }];
-    setPlaced([...placedRef.current]);
-    setSelectedUid(uid); selectedGrpRef.current = group;
-    if (boxHelperRef.current) { boxHelperRef.current.setFromObject(group); boxHelperRef.current.visible = true; }
-  }
+    const newItem: PlacedItem = { uid, item, group };
+    placedRef.current = [...placedRef.current, newItem];
+    setPlaced(prev => [...prev, newItem]);
+  };
 
-  function removeItem(uid: string) {
+  const removeItem = (uid: string) => {
     const scene = sceneRef.current; if (!scene) return;
-    const found = placedRef.current.find(p => p.uid === uid);
-    if (found) {
-      scene.remove(found.group);
-      found.group.traverse(c => {
-        if (c instanceof THREE.Mesh) {
-          c.geometry.dispose();
-          (Array.isArray(c.material) ? c.material : [c.material]).forEach((m: THREE.Material) => m.dispose());
-        }
-      });
-    }
+    const pi = placedRef.current.find(p => p.uid === uid);
+    if (pi) { scene.remove(pi.group); pi.group.traverse(c => { if (c instanceof THREE.Mesh) { c.geometry.dispose(); if (Array.isArray(c.material)) c.material.forEach(m => m.dispose()); else c.material.dispose(); } }); }
     placedRef.current = placedRef.current.filter(p => p.uid !== uid);
-    setPlaced([...placedRef.current]);
-    if (selectedUid === uid) { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }
-  }
+    setPlaced(prev => prev.filter(p => p.uid !== uid));
+    if (selectedUid === uid) setSelectedUid(null);
+  };
 
-  function rotateSelected(dir: 1 | -1) { if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += dir * Math.PI / 4; }
-  function setWallColor(id: WallId, hex: string) { setWallColors(prev => ({ ...prev, [id]: hex })); }
+  const rotateSelected = (deg: number) => {
+    if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += (deg * Math.PI) / 180;
+  };
 
-  const filtered = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(f => f.category === activeCategory);
+  const filteredCatalog = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(i => i.category === activeCategory);
 
   return (
-    <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.52)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#64748b', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-          Arrastra muebles · Órbita con ratón · Clic en pared para pintarla
-        </div>
-        <button onClick={() => setPanelOpen(o => !o)} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem' }}>
-          {panelOpen ? '▶ Ocultar' : '◀ Panel'}
-        </button>
-        {selectedUid && (
-          <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(0,212,255,0.35)', borderRadius: 10, padding: '6px 10px', backdropFilter: 'blur(6px)' }}>
-            <button onClick={() => rotateSelected(-1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↺</button>
-            <button onClick={() => rotateSelected(1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↻</button>
-            <button onClick={() => removeItem(selectedUid)} style={{ background: '#2d1c1c', border: '1px solid #7f1d1d', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>🗑</button>
-            <button onClick={() => { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }} style={{ background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', padding: '5px 8px', fontSize: '1rem' }}>✕</button>
-          </div>
-        )}
-      </div>
+    <div style={{ display: 'flex', width: '100%', height: '100%', background: '#0d0d12', fontFamily: 'system-ui,sans-serif', position: 'relative' }}>
 
+      {/* Toggle panel button */}
+      <button
+        onClick={() => setPanelOpen(o => !o)}
+        style={{
+          position: 'absolute', top: 14, left: panelOpen ? 318 : 14, zIndex: 20,
+          background: 'rgba(30,34,44,0.92)', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 8, color: '#e8e8f0', cursor: 'pointer', padding: '5px 10px', fontSize: '0.8rem',
+          backdropFilter: 'blur(8px)', transition: 'left 0.22s',
+        }}>
+        {panelOpen ? '◀ Ocultar' : '▶ Panel'}
+      </button>
+
+      {/* Side panel */}
       {panelOpen && (
-        <div style={{ width: 282, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
+        <div style={{
+          width: 308, minWidth: 308, background: 'rgba(18,20,28,0.97)', borderRight: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', flexDirection: 'column', zIndex: 10, overflowY: 'auto',
+          backdropFilter: 'blur(12px)',
+        }}>
+          {/* Header */}
+          <div style={{ padding: '18px 18px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e8e8f8', letterSpacing: 0.3 }}>🏠 Room Editor</div>
+            <div style={{ fontSize: '0.72rem', color: '#7a7a9a', marginTop: 3 }}>Diseña tu espacio en 3D</div>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             {(['furniture', 'walls', 'floor'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: '11px 4px', background: activeTab === tab ? '#1e293b' : 'transparent', border: 'none', color: activeTab === tab ? '#e2e8f0' : '#64748b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent' }}>
-                {tab === 'furniture' ? '🛋️ Muebles' : tab === 'walls' ? '🎨 Paredes' : '🪵 Suelo'}
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                flex: 1, padding: '8px 4px', background: activeTab === tab ? 'rgba(90,140,255,0.15)' : 'transparent',
+                border: 'none', borderBottom: activeTab === tab ? '2px solid #5a8cff' : '2px solid transparent',
+                color: activeTab === tab ? '#8ab4ff' : '#6a6a8a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+              }}>
+                {tab === 'furniture' ? '🛋 Muebles' : tab === 'walls' ? '🎨 Paredes' : '🪵 Suelo'}
               </button>
             ))}
           </div>
 
+          {/* Furniture tab */}
           {activeTab === 'furniture' && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', gap: 4, padding: '8px 10px', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Category filter */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '10px 12px 6px' }}>
                 {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ padding: '4px 10px', borderRadius: 16, border: 'none', background: activeCategory === cat ? '#3b82f6' : '#1e293b', color: activeCategory === cat ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: activeCategory === cat ? 600 : 400 }}>{cat}</button>
+                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{
+                    padding: '3px 9px', borderRadius: 12, border: 'none', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600,
+                    background: activeCategory === cat ? '#5a8cff' : 'rgba(255,255,255,0.07)',
+                    color: activeCategory === cat ? '#fff' : '#9090b0',
+                  }}>{cat}</button>
                 ))}
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
-                {filtered.map(item => (
-                  <button key={item.id} onClick={() => addFurniture(item)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#3b82f6')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#334155')}>
-                    <span style={{ fontSize: '1.4rem' }}>{item.emoji}</span>
-                    <div><div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</div><div style={{ fontSize: '0.7rem', color: '#475569' }}>{item.category}</div></div>
-                    <span style={{ marginLeft: 'auto', color: '#3b82f6', fontSize: '1.1rem' }}>+</span>
+              {/* Catalog grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, padding: '4px 12px 12px', overflowY: 'auto' }}>
+                {filteredCatalog.map(item => (
+                  <button key={item.id} onClick={() => addItem(item)} style={{
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
+                    borderRadius: 10, padding: '10px 6px', cursor: 'pointer', color: '#d0d0e8',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    transition: 'background 0.15s',
+                  }}>
+                    <span style={{ fontSize: '1.5rem' }}>{item.emoji}</span>
+                    <span style={{ fontSize: '0.66rem', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>{item.name}</span>
+                    <span style={{ fontSize: '0.58rem', color: '#6a6a8a', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: '1px 5px' }}>{item.category}</span>
                   </button>
                 ))}
               </div>
+
+              {/* Placed items */}
               {placed.length > 0 && (
-                <div style={{ borderTop: '1px solid #1f2937', padding: '10px', flexShrink: 0 }}>
-                  <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>En la habitación ({placed.length})</p>
-                  <div style={{ maxHeight: 110, overflowY: 'auto' }}>
-                    {placed.map(p => (
-                      <div key={p.uid} onClick={() => { setSelectedUid(p.uid); selectedGrpRef.current = p.group; if (boxHelperRef.current) { boxHelperRef.current.setFromObject(p.group); boxHelperRef.current.visible = true; } }}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 6, background: selectedUid === p.uid ? '#1e3a5f' : 'transparent', marginBottom: 2, cursor: 'pointer' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{p.item.emoji} {p.item.name}</span>
-                        <button onClick={ev => { ev.stopPropagation(); removeItem(p.uid); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' }}>×</button>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 12px' }}>
+                  <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#7a7a9a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>En la sala</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {placed.map(pi => (
+                      <div key={pi.uid} onClick={() => { setSelectedUid(pi.uid); selectedGrpRef.current = pi.group; if (boxHelperRef.current) { boxHelperRef.current.setFromObject(pi.group); boxHelperRef.current.visible = true; } }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '5px 8px', borderRadius: 7, cursor: 'pointer',
+                          background: selectedUid === pi.uid ? 'rgba(90,140,255,0.18)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${selectedUid === pi.uid ? 'rgba(90,140,255,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                        }}>
+                        <span style={{ fontSize: '0.70rem', color: '#c0c0d8' }}>{pi.item.emoji} {pi.item.name}</span>
+                        <button onClick={e => { e.stopPropagation(); removeItem(pi.uid); }} style={{
+                          background: 'rgba(255,80,80,0.18)', border: 'none', borderRadius: 5,
+                          color: '#ff8080', cursor: 'pointer', fontSize: '0.65rem', padding: '2px 6px',
+                        }}>✕</button>
                       </div>
                     ))}
                   </div>
+                  {selectedUid && (
+                    <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+                      <button onClick={() => rotateSelected(-15)} style={{ flex: 1, padding: '5px', background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 6, color: '#c0c0d8', cursor: 'pointer', fontSize: '0.72rem' }}>↺ −15°</button>
+                      <button onClick={() => rotateSelected(15)} style={{ flex: 1, padding: '5px', background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 6, color: '#c0c0d8', cursor: 'pointer', fontSize: '0.72rem' }}>↻ +15°</button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
+          {/* Walls tab */}
           {activeTab === 'walls' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selecciona pared</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
-                {(['back', 'left', 'right', 'ceiling'] as WallId[]).map(id => (
-                  <button key={id} onClick={() => setSelectedWall(id)} style={{ padding: '8px 6px', borderRadius: 8, border: `2px solid ${selectedWall === id ? '#3b82f6' : '#334155'}`, background: selectedWall === id ? '#1e3a5f' : '#1e293b', color: selectedWall === id ? '#e2e8f0' : '#94a3b8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: selectedWall === id ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 14, height: 14, borderRadius: 3, background: wallColors[id], border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0, display: 'inline-block' }} />
-                    {WALL_LABELS[id]}
+            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#7a7a9a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Selecciona pared</div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(Object.keys(WALL_LABELS) as WallId[]).map(wid => (
+                  <button key={wid} onClick={() => setSelectedWall(wid)} style={{
+                    flex: 1, padding: '5px 3px', borderRadius: 7, border: `1px solid ${selectedWall === wid ? '#5a8cff' : 'rgba(255,255,255,0.1)'}`,
+                    background: selectedWall === wid ? 'rgba(90,140,255,0.18)' : 'rgba(255,255,255,0.04)',
+                    color: selectedWall === wid ? '#8ab4ff' : '#8080a0', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600,
+                  }}>{WALL_LABELS[wid]}</button>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {WALL_COLORS.map(({ name, hex }) => (
+                  <button key={hex} onClick={() => setWallColors(prev => ({ ...prev, [selectedWall]: hex }))} style={{
+                    display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px',
+                    borderRadius: 8, border: `1.5px solid ${wallColors[selectedWall] === hex ? '#5a8cff' : 'rgba(255,255,255,0.08)'}`,
+                    background: wallColors[selectedWall] === hex ? 'rgba(90,140,255,0.15)' : 'rgba(255,255,255,0.04)',
+                    cursor: 'pointer', color: '#c0c0d8',
+                  }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 4, background: hex, display: 'inline-block', border: '1px solid rgba(0,0,0,0.18)', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.64rem', fontWeight: 600 }}>{name}</span>
                   </button>
                 ))}
               </div>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Color</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7, marginBottom: 14 }}>
-                {WALL_COLORS.map(c => (
-                  <button key={c.hex} onClick={() => setWallColor(selectedWall, c.hex)} style={{ padding: '9px 8px', borderRadius: 8, border: `2px solid ${wallColors[selectedWall] === c.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 4, background: c.hex, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, display: 'block' }} />
-                    <span style={{ fontSize: '0.73rem', color: wallColors[selectedWall] === c.hex ? '#e2e8f0' : '#94a3b8', fontWeight: wallColors[selectedWall] === c.hex ? 600 : 400 }}>{c.name}</span>
-                  </button>
-                ))}
-              </div>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 8px' }}>Personalizado</p>
-              <input type="color" value={wallColors[selectedWall]} onChange={e => setWallColor(selectedWall, e.target.value)} style={{ width: '100%', height: 38, borderRadius: 8, border: '1px solid #334155', background: 'transparent', cursor: 'pointer', padding: 2, marginBottom: 12 }} />
-              <button onClick={() => setWallColors({ back: wallColors[selectedWall], left: wallColors[selectedWall], right: wallColors[selectedWall], ceiling: wallColors[selectedWall] })} style={{ width: '100%', padding: '9px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}>
-                Aplicar a todas las paredes
-              </button>
             </div>
           )}
 
+          {/* Floor tab */}
           {activeTab === 'floor' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
-              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tono de suelo</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7 }}>
-                {FLOOR_TINTS.map(t => (
-                  <button key={t.hex} onClick={() => setFloorTint(t.hex)} style={{ padding: '10px 8px', borderRadius: 8, border: `2px solid ${floorTint === t.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 44, height: 28, borderRadius: 6, background: t.hex === '#ffffff' ? 'linear-gradient(135deg,#e8d5a0 0%,#c9a97a 50%,#a07840 100%)' : t.hex, border: '1px solid rgba(255,255,255,0.12)', display: 'block' }} />
-                    <span style={{ fontSize: '0.72rem', color: floorTint === t.hex ? '#e2e8f0' : '#94a3b8', fontWeight: floorTint === t.hex ? 600 : 400 }}>{t.name}</span>
+            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#7a7a9a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Tinte del suelo</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {FLOOR_TINTS.map(({ name, hex }) => (
+                  <button key={hex} onClick={() => setFloorTint(hex)} style={{
+                    display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px',
+                    borderRadius: 8, border: `1.5px solid ${floorTint === hex ? '#5a8cff' : 'rgba(255,255,255,0.08)'}`,
+                    background: floorTint === hex ? 'rgba(90,140,255,0.15)' : 'rgba(255,255,255,0.04)',
+                    cursor: 'pointer', color: '#c0c0d8',
+                  }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 4, background: hex, display: 'inline-block', border: '1px solid rgba(0,0,0,0.18)', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.64rem', fontWeight: 600 }}>{name}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          <div style={{ padding: '14px 12px', borderTop: '1px solid #1f2937', flexShrink: 0 }}>
-            <a href="/login" style={{ display: 'block', padding: '11px', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', color: '#fff', borderRadius: 8, textAlign: 'center', fontWeight: 600, fontSize: '0.9rem', textDecoration: 'none', marginBottom: 8 }}>
-              Guardar y crear cuenta →
-            </a>
+          {/* Footer */}
+          <div style={{ padding: '10px 14px 14px', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 'auto' }}>
             <p style={{ color: '#475569', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>Gratis · Sin tarjeta · 2 tours incluidos</p>
           </div>
         </div>
       )}
+
+      {/* Canvas */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+      </div>
+
     </div>
   );
 }
