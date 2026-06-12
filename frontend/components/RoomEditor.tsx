@@ -722,12 +722,12 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.04;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.78;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.01).texture;
 
     // Try to load warm HDRI for better reflections, fall back to RoomEnvironment
     const rgbeLoader = new RGBELoader();
@@ -770,10 +770,10 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     composer.addPass(new OutputPass());
 
     // Lighting — one key light, deep shadows, photorealistic contrast
-    scene.add(new THREE.AmbientLight(0xfff0d8, 0.08));
+    scene.add(new THREE.AmbientLight(0xfff0d8, 0.05));
 
     // Sunlight through right-wall window — single dominant light
-    const winLight = new THREE.SpotLight(0xfffbe8, 8.5, 24, Math.PI / 6.5, 0.32, 1.4);
+    const winLight = new THREE.SpotLight(0xfffbe8, 3.5, 22, Math.PI / 7, 0.35, 1.6);
     winLight.position.set(6.8, 4.8, 1.0); winLight.target.position.set(-0.5, 0.2, 0.5);
     winLight.castShadow = true; winLight.shadow.mapSize.set(4096, 4096);
     winLight.shadow.camera.near = 1; winLight.shadow.camera.far = 24;
@@ -781,11 +781,11 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     scene.add(winLight); scene.add(winLight.target);
 
     // Very subtle cool sky bounce from the shadowed side
-    const skyFill = new THREE.DirectionalLight(0xc8d8f0, 0.18);
+    const skyFill = new THREE.DirectionalLight(0xc8d8f0, 0.08);
     skyFill.position.set(-5, 4, 3); scene.add(skyFill);
 
     // Chandelier — warm glow, moderate, local
-    const ceilLight = new THREE.PointLight(0xffecc8, 1.5, 9);
+    const ceilLight = new THREE.PointLight(0xffecc8, 0.8, 7);
     ceilLight.position.set(0, 2.38, 0.4);
     ceilLight.castShadow = true; ceilLight.shadow.mapSize.set(1024, 1024); ceilLight.shadow.bias = -0.003;
     scene.add(ceilLight);
@@ -922,7 +922,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
 
     // Right wall window
     const rWinGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.1),
-      new THREE.MeshStandardMaterial({ color: 0xd8ecf8, emissive: 0xb8d8f0, emissiveIntensity: 3.8, transparent: true, opacity: 0.38, roughness: 0, metalness: 0.04 }));
+      new THREE.MeshStandardMaterial({ color: 0xd8ecf8, emissive: 0xb0d4f0, emissiveIntensity: 0.55, transparent: true, opacity: 0.28, roughness: 0, metalness: 0.04 }));
     rWinGlass.rotation.y = -Math.PI / 2;
     rWinGlass.position.set(RW / 2 - 0.07, 1.72, 0.8); scene.add(rWinGlass);
     const rWinFrameM = new THREE.MeshPhysicalMaterial({ color: 0xf0ece5, roughness: 0.38, metalness: 0.06 } as THREE.MeshPhysicalMaterialParameters);
