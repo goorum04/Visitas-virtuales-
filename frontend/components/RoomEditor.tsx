@@ -61,7 +61,7 @@ const CATALOG: FurnitureItem[] = [
 const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Dormit.', 'Electr.', 'Decor'];
 const WALL_LABELS: Record<WallId, string> = { back: 'Fondo', left: 'Izquierda', right: 'Derecha', ceiling: 'Techo' };
 
-// ── Textures ─────────────────────────────────────────────────────────────
+// ── Textures ─────────────────────────────────────────────────────────────────
 
 function makeWoodTex(): THREE.CanvasTexture {
   const S = 2048, cv = document.createElement('canvas');
@@ -239,7 +239,7 @@ function makeRugTex(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-// ── Materials ─────────────────────────────────────────────────────────────
+// ── Materials ─────────────────────────────────────────────────────────────────
 
 function physMat(color: number | string, rough: number, metal = 0): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, envMapIntensity: 0.7 });
@@ -273,7 +273,7 @@ function metalMat(col: number, rough = 0.18): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, metalness: 0.96, envMapIntensity: 2.0 });
 }
 
-// ── Furniture ─────────────────────────────────────────────────────────────
+// ── Furniture ─────────────────────────────────────────────────────────────────
 
 function sofa(w: number, col: number): THREE.Group {
   const g = new THREE.Group();
@@ -669,7 +669,7 @@ function buildFurniture(item: FurnitureItem): THREE.Group {
   }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: string | null }) {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -936,315 +936,358 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     // Curtain rod + wavy curtains
     const rodM = metalMat(0x1e1e1e, 0.16);
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 4.5, 10), rodM);
-    rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.18, 0.8); scene.add(rod);
-    const curtainMat = new THREE.MeshPhysicalMaterial({ color: 0xe8dece, roughness: 0.94, metalness: 0, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
-    [-1.6, 1.6].forEach(side => {
-      const shape = new THREE.Shape();
-      const W2 = 0.95, H2 = 2.55, waves = 5, amp = 0.072;
-      shape.moveTo(0, 0);
-      for (let y = 0; y <= H2; y += H2 / 40) {
-        const wx = Math.sin((y / H2) * waves * Math.PI * 2) * amp * (1 - y / H2 * 0.35);
-        shape.lineTo(wx, y);
+    rod.rotation.x = Math.PI / 2; rod.position.set(RW / 2 - 0.1, RH - 0.16, 0.8); scene.add(rod);
+    const curtM = new THREE.MeshPhysicalMaterial({ color: 0xb89870, roughness: 0.94, side: THREE.DoubleSide } as THREE.MeshPhysicalMaterialParameters);
+    [[2.3, 1], [-0.75, -1]].forEach(([cz, dir]) => {
+      const geo = new THREE.PlaneGeometry(1.4, RH - 0.12, 8, 1);
+      const pos = geo.attributes.position;
+      for (let vi = 0; vi < pos.count; vi++) {
+        const localX = pos.getX(vi);
+        pos.setZ(vi, Math.sin(localX * Math.PI * 2.5 / 1.4) * 0.055 * dir);
       }
-      shape.lineTo(W2, H2); shape.lineTo(W2, 0); shape.closePath();
-      const geo = new THREE.ShapeGeometry(shape, 20);
-      const curtain = new THREE.Mesh(geo, curtainMat);
-      curtain.rotation.y = -Math.PI / 2;
-      curtain.position.set(RW / 2 - 0.12, RH - 2.72, 0.8 + side);
-      curtain.castShadow = true; scene.add(curtain);
+      geo.computeVertexNormals();
+      const c = new THREE.Mesh(geo, curtM);
+      c.rotation.y = Math.PI / 2;
+      c.position.set(RW / 2 - 0.18, (RH - 0.12) / 2 + 0.06, cz);
+      c.castShadow = true; c.receiveShadow = true; scene.add(c);
     });
 
-    // Baseboard on back & side walls
-    const baseM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.38, envMapIntensity: 0.55 } as THREE.MeshPhysicalMaterialParameters);
-    const addBaseboard = (w: number, pos: [number, number, number], ry: number) => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, 0.022), baseM);
-      b.position.set(...pos); b.rotation.y = ry; scene.add(b);
+    // Skirting boards
+    const skirtM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.48, envMapIntensity: 0.40 } as THREE.MeshPhysicalMaterialParameters);
+    const skirt = (w: number, p: [number, number, number], ry: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.025), skirtM);
+      m.position.set(...p); m.rotation.y = ry; m.receiveShadow = true; scene.add(m);
     };
-    addBaseboard(RW,      [0,    0.06, -RD / 2 + 0.012], 0);
-    addBaseboard(RD,      [-RW / 2 + 0.012, 0.06, 0],    Math.PI / 2);
-    addBaseboard(RD,      [RW / 2 - 0.012,  0.06, 0],    Math.PI / 2);
+    skirt(RW, [0, 0.05, -RD / 2 + 0.013], 0);
+    skirt(RD, [-RW / 2 + 0.013, 0.05, 0], Math.PI / 2);
+    skirt(RD, [RW / 2 - 0.013, 0.05, 0], Math.PI / 2);
 
     // Crown molding
-    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xf5f2ee, roughness: 0.36, envMapIntensity: 0.6 } as THREE.MeshPhysicalMaterialParameters);
-    const addCrown = (w: number, pos: [number, number, number], ry: number) => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.088, 0.055), crownM);
-      b.position.set(...pos); b.rotation.y = ry; scene.add(b);
+    const crownM = new THREE.MeshPhysicalMaterial({ color: 0xfafaf8, roughness: 0.58 } as THREE.MeshPhysicalMaterialParameters);
+    const crown = (w: number, p: [number, number, number], ry: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.058, 0.058), crownM);
+      m.position.set(...p); m.rotation.y = ry; scene.add(m);
     };
-    addCrown(RW,  [0,    RH - 0.044, -RD / 2 + 0.028], 0);
-    addCrown(RD,  [-RW / 2 + 0.028, RH - 0.044, 0],    Math.PI / 2);
-    addCrown(RD,  [RW / 2 - 0.028,  RH - 0.044, 0],    Math.PI / 2);
+    crown(RW, [0, RH - 0.03, -RD / 2 + 0.03], 0);
+    crown(RD, [-RW / 2 + 0.03, RH - 0.03, 0], Math.PI / 2);
+    crown(RD, [RW / 2 - 0.03, RH - 0.03, 0], Math.PI / 2);
 
-    // Accent table with vases
-    const accentTable = new THREE.Mesh(
-      new THREE.BoxGeometry(0.72, 0.78, 0.28),
-      woodPhysMat(0x5a3818, 0.55)
-    );
-    accentTable.position.set(-2.85, 0.39, -2.5);
-    accentTable.castShadow = true; accentTable.receiveShadow = true;
-    scene.add(accentTable);
-    // Vases on accent table
-    [[0xb05828, 0.42], [0x284858, 0.32], [0x9a8a60, 0.36]].forEach(([col, h], i) => {
-      const v = vase(col, h);
-      v.position.set(-2.85 + (i - 1) * 0.22, 0.78, -2.5);
-      scene.add(v);
+    // BoxHelper for selection
+    const placeholder = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001));
+    const boxHelper = new THREE.BoxHelper(placeholder, 0x00d4ff);
+    boxHelper.visible = false; scene.add(boxHelper); boxHelperRef.current = boxHelper;
+
+    // Pre-loaded neoclassical scene
+    const refScene: Array<{ build: () => THREE.Group; id: string; x: number; z: number; ry: number }> = [
+      { build: () => sofa(2.5, 0xe0dac8),            id: 'sofa3',     x:  1.3,  z:  1.6,  ry: Math.PI },
+      { build: () => armchair(0xc0681c),              id: 'armchair',  x: -0.85, z:  0.38, ry: Math.PI * 0.58 },
+      { build: () => armchair(0xc0681c),              id: 'armchair',  x:  0.5,  z:  0.22, ry: Math.PI * 0.82 },
+      { build: () => coffeeTable(0xf0ebe0, 0xd4c080), id: 'coffee',    x:  0.4,  z:  1.14, ry: 0 },
+      { build: () => sideboard(0xc8a870, 0xc0a040),   id: 'sideboard', x: -3.05, z: -1.2,  ry: Math.PI / 2 },
+      { build: () => arcLamp(0xb8a050, 0xf0ece6),     id: 'arclamp',   x:  2.9,  z:  0.5,  ry: -Math.PI / 4 },
+      { build: () => plant(0x2e5a28),                 id: 'plant',     x: -2.6,  z:  1.4,  ry: 0 },
+      { build: () => stool(0x151515),                 id: 'stool',     x: -0.25, z:  2.35, ry: 0 },
+      { build: () => stool(0x151515),                 id: 'stool',     x:  0.6,  z:  2.55, ry: 0.8 },
+    ];
+    const initPlaced: PlacedItem[] = [];
+    refScene.forEach(({ build, id, x, z, ry }, i) => {
+      const item = CATALOG.find(f => f.id === id)!;
+      const group = build();
+      group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+      group.position.set(x, 0, z); group.rotation.y = ry;
+      scene.add(group);
+      initPlaced.push({ uid: `${id}-init-${i}`, item, group });
     });
+    placedRef.current = initPlaced; setPlaced([...initPlaced]);
 
-    // Book stack on accent table
+    // Static decorative objects (not draggable)
+    // Vases on sideboard top — sideboard at (-3.05,0,-1.2) ry=PI/2
+    // After rotation: sideboard length along world Z, handles face toward x=-2.84
+    const v1 = vase(0xc8a87a, 0.44);
+    v1.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    v1.position.set(-2.86, 0.86, -1.72); scene.add(v1);
+
+    const v2 = vase(0x4a6898, 0.30);
+    v2.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    v2.position.set(-2.86, 0.86, -0.74); scene.add(v2);
+
     const bs = bookStack();
-    bs.position.set(-2.60, 0.78, -2.5);
+    bs.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    bs.position.set(-2.90, 0.86, -1.22);
     bs.rotation.y = 0.3;
     scene.add(bs);
 
-    // Raycaster for wall picking
-    const raycaster = new THREE.Raycaster();
-    const mouse     = new THREE.Vector2();
-    const onPointerDown = (e: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
-      mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const wallMeshes = [...wallMeshToId.current.keys()];
-      const hit = raycaster.intersectObjects(wallMeshes, false)[0];
-      if (hit) setSelectedWall(wallMeshToId.current.get(hit.object as THREE.Mesh)!);
-    };
-    canvas.addEventListener('pointerdown', onPointerDown);
+    // Throw pillows on sofa (sofa at x=1.3,z=1.6,ry=PI → back cushions at world z≈1.92)
+    const pilM1 = fabricMat(0x8a4418);
+    const pilM2 = fabricMat(0x2c4462);
+    const pG1 = new RoundedBoxGeometry(0.30, 0.22, 0.24, 3, 0.055);
+    const pG2 = new RoundedBoxGeometry(0.26, 0.20, 0.22, 3, 0.048);
+    const pil1 = new THREE.Mesh(pG1, pilM1);
+    pil1.position.set(0.78, 0.52, 1.76); pil1.rotation.y = Math.PI + 0.18; pil1.castShadow = true; scene.add(pil1);
+    const pil2 = new THREE.Mesh(pG2, pilM2);
+    pil2.position.set(1.88, 0.52, 1.78); pil2.rotation.y = Math.PI - 0.16; pil2.castShadow = true; scene.add(pil2);
+    // Third small square pillow in center, slightly tilted
+    const pG3 = new RoundedBoxGeometry(0.24, 0.20, 0.22, 3, 0.048);
+    const pil3 = new THREE.Mesh(pG3, fabricMat(0xc8a868));
+    pil3.position.set(1.33, 0.52, 1.77); pil3.rotation.y = Math.PI + 0.08; pil3.rotation.z = 0.06; pil3.castShadow = true; scene.add(pil3);
 
-    // Animate
-    const animate = () => {
-      rafRef.current = requestAnimationFrame(animate);
-      controls.update();
-      if (boxHelperRef.current && selectedGrpRef.current) boxHelperRef.current.update();
-      composer.render();
+    // Decorative candle on coffee table (table at x=0.4,z=1.14,top y=0.44)
+    const candleWax = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.028, 0.028, 0.11, 12),
+      new THREE.MeshPhysicalMaterial({ color: 0xf2e6cc, roughness: 0.92, metalness: 0 } as THREE.MeshPhysicalMaterialParameters)
+    );
+    candleWax.position.set(0.42, 0.495, 1.44); candleWax.castShadow = true; scene.add(candleWax);
+    const candleFlame = new THREE.Mesh(
+      new THREE.SphereGeometry(0.011, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffcc44, emissive: 0xffaa00, emissiveIntensity: 5.0, roughness: 0.02 })
+    );
+    candleFlame.scale.y = 1.65;
+    candleFlame.position.set(0.42, 0.563, 1.44); scene.add(candleFlame);
+    const candleLight = new THREE.PointLight(0xff8822, 0.70, 1.6);
+    candleLight.position.set(0.42, 0.58, 1.44); scene.add(candleLight);
+
+    // Pointer events
+    const raycaster = new THREE.Raycaster();
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    let potDrag: { uid: string; group: THREE.Group } | null = null;
+    let isDrag = false, downX = 0, downY = 0;
+    const dragOffset = new THREE.Vector3();
+
+    const toNDC = (cx: number, cy: number) => {
+      const r = canvas.getBoundingClientRect();
+      return new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     };
-    animate();
+
+    const onPD = (e: PointerEvent) => {
+      downX = e.clientX; downY = e.clientY; isDrag = false;
+      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
+      const meshes: THREE.Object3D[] = [];
+      placedRef.current.forEach(p => p.group.traverse(c => { if (c instanceof THREE.Mesh) meshes.push(c); }));
+      if (meshes.length) {
+        const hits = raycaster.intersectObjects(meshes);
+        if (hits.length) {
+          let obj: THREE.Object3D = hits[0].object;
+          while (obj.parent && !(obj.parent instanceof THREE.Scene)) obj = obj.parent;
+          const found = placedRef.current.find(p => p.group === obj);
+          if (found) {
+            potDrag = { uid: found.uid, group: found.group };
+            controls.enabled = false; canvas.setPointerCapture(e.pointerId);
+            const pt = new THREE.Vector3();
+            raycaster.ray.intersectPlane(floorPlane, pt);
+            dragOffset.set(found.group.position.x - pt.x, 0, found.group.position.z - pt.z);
+            return;
+          }
+        }
+      }
+    };
+
+    const onPM = (e: PointerEvent) => {
+      if (!potDrag) return;
+      if (!isDrag && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) return;
+      isDrag = true;
+      raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
+      const pt = new THREE.Vector3(); raycaster.ray.intersectPlane(floorPlane, pt);
+      potDrag.group.position.x = Math.max(-RW / 2 + 0.5, Math.min(RW / 2 - 0.5, pt.x + dragOffset.x));
+      potDrag.group.position.z = Math.max(-RD / 2 + 0.5, Math.min(RD / 2 - 0.5, pt.z + dragOffset.z));
+      if (boxHelperRef.current?.visible) boxHelperRef.current.setFromObject(potDrag.group);
+    };
+
+    const onPU = (e: PointerEvent) => {
+      controls.enabled = true;
+      if (potDrag) {
+        if (!isDrag) {
+          setSelectedUid(potDrag.uid); selectedGrpRef.current = potDrag.group;
+          if (boxHelperRef.current) { boxHelperRef.current.setFromObject(potDrag.group); boxHelperRef.current.visible = true; }
+        }
+        canvas.releasePointerCapture(e.pointerId); potDrag = null; isDrag = false;
+      } else if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
+        raycaster.setFromCamera(toNDC(e.clientX, e.clientY), camera);
+        const wallMeshes = Array.from(wallMeshToId.current.keys());
+        const hits = raycaster.intersectObjects(wallMeshes);
+        if (hits.length) {
+          const wId = wallMeshToId.current.get(hits[0].object as THREE.Mesh);
+          if (wId) { setSelectedWall(wId); setActiveTab('walls'); }
+        } else {
+          setSelectedUid(null); selectedGrpRef.current = null;
+          if (boxHelperRef.current) boxHelperRef.current.visible = false;
+        }
+      }
+    };
+
+    canvas.addEventListener('pointerdown', onPD);
+    canvas.addEventListener('pointermove', onPM);
+    canvas.addEventListener('pointerup', onPU);
 
     const onResize = () => {
-      const nW = canvas.parentElement?.clientWidth || 800;
-      const nH = canvas.parentElement?.clientHeight || 600;
-      camera.aspect = nW / nH; camera.updateProjectionMatrix();
-      renderer.setSize(nW, nH); composer.setSize(nW, nH);
+      const w = canvas.parentElement?.clientWidth || 800, h = canvas.parentElement?.clientHeight || 600;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h); composer.setSize(w, h);
     };
     window.addEventListener('resize', onResize);
 
+    const animate = () => { rafRef.current = requestAnimationFrame(animate); controls.update(); composer.render(); };
+    animate();
+
     return () => {
-      cancelAnimationFrame(rafRef.current);
-      canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('resize', onResize);
-      renderer.dispose();
+      canvas.removeEventListener('pointerdown', onPD);
+      canvas.removeEventListener('pointermove', onPM);
+      canvas.removeEventListener('pointerup', onPU);
+      cancelAnimationFrame(rafRef.current);
+      composer.dispose(); renderer.dispose();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const addItem = (item: FurnitureItem) => {
+  function addFurniture(item: FurnitureItem) {
     const scene = sceneRef.current; if (!scene) return;
     const group = buildFurniture(item);
-    group.position.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 2);
     group.traverse(c => { if (c instanceof THREE.Mesh) { c.castShadow = true; c.receiveShadow = true; } });
+    const a = Math.random() * Math.PI * 2, r = 0.5 + Math.random() * 1.6;
+    group.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    group.rotation.y = (Math.random() - 0.5) * Math.PI * 0.5;
     scene.add(group);
-    const uid = crypto.randomUUID();
-    const newItem: PlacedItem = { uid, item, group };
-    placedRef.current = [...placedRef.current, newItem];
-    setPlaced(p => [...p, newItem]);
-    selectedGrpRef.current = group;
-    if (!boxHelperRef.current) {
-      const bh = new THREE.BoxHelper(group, 0x44aaff);
-      scene.add(bh); boxHelperRef.current = bh;
-    } else {
-      boxHelperRef.current.setFromObject(group);
-      boxHelperRef.current.visible = true;
-    }
-    setSelectedUid(uid);
-  };
+    const uid = `${item.id}-${Date.now()}`;
+    placedRef.current = [...placedRef.current, { uid, item, group }];
+    setPlaced([...placedRef.current]);
+    setSelectedUid(uid); selectedGrpRef.current = group;
+    if (boxHelperRef.current) { boxHelperRef.current.setFromObject(group); boxHelperRef.current.visible = true; }
+  }
 
-  const removeItem = (uid: string) => {
+  function removeItem(uid: string) {
     const scene = sceneRef.current; if (!scene) return;
-    const idx = placedRef.current.findIndex(p => p.uid === uid);
-    if (idx === -1) return;
-    const { group } = placedRef.current[idx];
-    scene.remove(group);
-    group.traverse(c => { if (c instanceof THREE.Mesh) { c.geometry.dispose(); if (Array.isArray(c.material)) c.material.forEach(m => m.dispose()); else c.material.dispose(); } });
+    const found = placedRef.current.find(p => p.uid === uid);
+    if (found) {
+      scene.remove(found.group);
+      found.group.traverse(c => {
+        if (c instanceof THREE.Mesh) {
+          c.geometry.dispose();
+          (Array.isArray(c.material) ? c.material : [c.material]).forEach((m: THREE.Material) => m.dispose());
+        }
+      });
+    }
     placedRef.current = placedRef.current.filter(p => p.uid !== uid);
-    setPlaced(p => p.filter(p2 => p2.uid !== uid));
-    if (selectedUid === uid) {
-      setSelectedUid(null);
-      if (boxHelperRef.current) boxHelperRef.current.visible = false;
-    }
-  };
+    setPlaced([...placedRef.current]);
+    if (selectedUid === uid) { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }
+  }
 
-  const moveItem = (uid: string, dx: number, dz: number) => {
-    const item = placedRef.current.find(p => p.uid === uid);
-    if (!item) return;
-    item.group.position.x += dx;
-    item.group.position.z += dz;
-    if (boxHelperRef.current && selectedGrpRef.current === item.group) boxHelperRef.current.update();
-  };
+  function rotateSelected(dir: 1 | -1) { if (selectedGrpRef.current) selectedGrpRef.current.rotation.y += dir * Math.PI / 4; }
+  function setWallColor(id: WallId, hex: string) { setWallColors(prev => ({ ...prev, [id]: hex })); }
 
-  const rotateItem = (uid: string, dy: number) => {
-    const item = placedRef.current.find(p => p.uid === uid);
-    if (item) { item.group.rotation.y += dy; if (boxHelperRef.current && selectedGrpRef.current === item.group) boxHelperRef.current.update(); }
-  };
-
-  const selectItem = (uid: string) => {
-    setSelectedUid(uid);
-    const item = placedRef.current.find(p => p.uid === uid);
-    if (!item || !sceneRef.current) return;
-    selectedGrpRef.current = item.group;
-    if (!boxHelperRef.current) {
-      const bh = new THREE.BoxHelper(item.group, 0x44aaff);
-      sceneRef.current.add(bh); boxHelperRef.current = bh;
-    } else {
-      boxHelperRef.current.setFromObject(item.group);
-      boxHelperRef.current.visible = true;
-    }
-  };
-
-  const filtered = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(c => c.category === activeCategory);
+  const filtered = activeCategory === 'Todos' ? CATALOG : CATALOG.filter(f => f.category === activeCategory);
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-[#0d0d12] text-white">
-      {/* 3-D viewport */}
-      <div className="relative flex-1 min-w-0">
-        <canvas ref={canvasRef} className="w-full h-full block" />
-
-        {/* Toggle panel */}
-        <button
-          onClick={() => setPanelOpen(o => !o)}
-          className="absolute top-3 right-3 z-20 bg-black/60 hover:bg-black/80 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-medium transition"
-        >{panelOpen ? '✕ Cerrar panel' : '☰ Panel'}</button>
-
-        {/* Selected item controls */}
+    <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.52)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#64748b', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          Arrastra muebles · Órbita con ratón · Clic en pared para pintarla
+        </div>
+        <button onClick={() => setPanelOpen(o => !o)} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem' }}>
+          {panelOpen ? '▶ Ocultar' : '◀ Panel'}
+        </button>
         {selectedUid && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 bg-black/70 backdrop-blur rounded-xl px-4 py-2.5 shadow-xl">
-            <span className="text-xs text-white/60 self-center mr-1">Mover:</span>
-            {[['←','x',-0.15],['→','x',0.15],['↑','z',-0.15],['↓','z',0.15]].map(([label, axis, delta]) => (
-              <button key={String(label)} onClick={() => moveItem(selectedUid, axis === 'x' ? Number(delta) : 0, axis === 'z' ? Number(delta) : 0)}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-bold transition">{label}</button>
-            ))}
-            <span className="text-xs text-white/60 self-center ml-2 mr-1">Rotar:</span>
-            {[['↺', -0.157],['↻', 0.157]].map(([label, delta]) => (
-              <button key={String(label)} onClick={() => rotateItem(selectedUid, Number(delta))}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-bold transition">{label}</button>
-            ))}
-            <button onClick={() => removeItem(selectedUid)}
-              className="ml-3 px-3 h-8 rounded-lg bg-red-600/70 hover:bg-red-500 text-xs font-semibold transition">Eliminar</button>
+          <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(0,212,255,0.35)', borderRadius: 10, padding: '6px 10px', backdropFilter: 'blur(6px)' }}>
+            <button onClick={() => rotateSelected(-1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↺</button>
+            <button onClick={() => rotateSelected(1)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>↻</button>
+            <button onClick={() => removeItem(selectedUid)} style={{ background: '#2d1c1c', border: '1px solid #7f1d1d', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '5px 10px', fontSize: '1rem' }}>🗑</button>
+            <button onClick={() => { setSelectedUid(null); selectedGrpRef.current = null; if (boxHelperRef.current) boxHelperRef.current.visible = false; }} style={{ background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', padding: '5px 8px', fontSize: '1rem' }}>✕</button>
           </div>
         )}
       </div>
 
-      {/* Side panel */}
       {panelOpen && (
-        <div className="w-72 shrink-0 flex flex-col bg-[#14141c] border-l border-white/8 overflow-hidden">
-
-          {/* Tabs */}
-          <div className="flex border-b border-white/8">
-            {(['furniture','walls','floor'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2.5 text-xs font-semibold capitalize transition ${
-                  activeTab === tab ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
-                }`}>
-                {tab === 'furniture' ? 'Muebles' : tab === 'walls' ? 'Paredes' : 'Suelo'}
+        <div style={{ width: 282, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
+            {(['furniture', 'walls', 'floor'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: '11px 4px', background: activeTab === tab ? '#1e293b' : 'transparent', border: 'none', color: activeTab === tab ? '#e2e8f0' : '#64748b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent' }}>
+                {tab === 'furniture' ? '🛋️ Muebles' : tab === 'walls' ? '🎨 Paredes' : '🪵 Suelo'}
               </button>
             ))}
           </div>
 
-          {/* ── Furniture tab ── */}
           {activeTab === 'furniture' && (
-            <div className="flex flex-col flex-1 overflow-hidden">
-              {/* Category filter */}
-              <div className="flex gap-1 flex-wrap p-2 border-b border-white/8">
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', gap: 4, padding: '8px 10px', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
                 {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)}
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition ${
-                      activeCategory === cat ? 'bg-indigo-500 text-white' : 'bg-white/8 text-white/55 hover:bg-white/15'
-                    }`}>{cat}</button>
+                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ padding: '4px 10px', borderRadius: 16, border: 'none', background: activeCategory === cat ? '#3b82f6' : '#1e293b', color: activeCategory === cat ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: activeCategory === cat ? 600 : 400 }}>{cat}</button>
                 ))}
               </div>
-              {/* Catalog grid */}
-              <div className="flex-1 overflow-y-auto p-2 grid grid-cols-2 gap-1.5 content-start">
+              <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
                 {filtered.map(item => (
-                  <button key={item.id} onClick={() => addItem(item)}
-                    className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/5 hover:bg-white/12 border border-white/6 hover:border-indigo-400/50 transition group">
-                    <span className="text-2xl">{item.emoji}</span>
-                    <span className="text-[11px] text-white/75 text-center leading-tight group-hover:text-white">{item.name}</span>
+                  <button key={item.id} onClick={() => addFurniture(item)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#3b82f6')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#334155')}>
+                    <span style={{ fontSize: '1.4rem' }}>{item.emoji}</span>
+                    <div><div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</div><div style={{ fontSize: '0.7rem', color: '#475569' }}>{item.category}</div></div>
+                    <span style={{ marginLeft: 'auto', color: '#3b82f6', fontSize: '1.1rem' }}>+</span>
                   </button>
                 ))}
               </div>
-              {/* Placed items list */}
               {placed.length > 0 && (
-                <div className="border-t border-white/8 p-2 max-h-44 overflow-y-auto">
-                  <p className="text-[10px] text-white/35 uppercase tracking-wider mb-1.5 px-1">En escena ({placed.length})</p>
-                  {placed.map(p => (
-                    <div key={p.uid}
-                      onClick={() => selectItem(p.uid)}
-                      className={`flex items-center justify-between px-2 py-1 rounded-lg mb-0.5 cursor-pointer transition ${
-                        selectedUid === p.uid ? 'bg-indigo-500/25 border border-indigo-400/40' : 'bg-white/5 hover:bg-white/10'
-                      }`}>
-                      <span className="text-xs">{p.item.emoji} {p.item.name}</span>
-                      <button onClick={e => { e.stopPropagation(); removeItem(p.uid); }}
-                        className="text-white/30 hover:text-red-400 text-xs ml-1 transition">✕</button>
-                    </div>
-                  ))}
+                <div style={{ borderTop: '1px solid #1f2937', padding: '10px', flexShrink: 0 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>En la habitación ({placed.length})</p>
+                  <div style={{ maxHeight: 110, overflowY: 'auto' }}>
+                    {placed.map(p => (
+                      <div key={p.uid} onClick={() => { setSelectedUid(p.uid); selectedGrpRef.current = p.group; if (boxHelperRef.current) { boxHelperRef.current.setFromObject(p.group); boxHelperRef.current.visible = true; } }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 6, background: selectedUid === p.uid ? '#1e3a5f' : 'transparent', marginBottom: 2, cursor: 'pointer' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{p.item.emoji} {p.item.name}</span>
+                        <button onClick={ev => { ev.stopPropagation(); removeItem(p.uid); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* ── Walls tab ── */}
           {activeTab === 'walls' && (
-            <div className="flex-1 overflow-y-auto p-3">
-              {/* Wall selector */}
-              <div className="flex gap-1.5 mb-3">
-                {(Object.keys(WALL_LABELS) as WallId[]).map(id => (
-                  <button key={id} onClick={() => setSelectedWall(id)}
-                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition ${
-                      selectedWall === id ? 'bg-indigo-500 text-white' : 'bg-white/8 text-white/50 hover:bg-white/15'
-                    }`}>{WALL_LABELS[id]}</button>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selecciona pared</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
+                {(['back', 'left', 'right', 'ceiling'] as WallId[]).map(id => (
+                  <button key={id} onClick={() => setSelectedWall(id)} style={{ padding: '8px 6px', borderRadius: 8, border: `2px solid ${selectedWall === id ? '#3b82f6' : '#334155'}`, background: selectedWall === id ? '#1e3a5f' : '#1e293b', color: selectedWall === id ? '#e2e8f0' : '#94a3b8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: selectedWall === id ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 3, background: wallColors[id], border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0, display: 'inline-block' }} />
+                    {WALL_LABELS[id]}
+                  </button>
                 ))}
               </div>
-              {/* Color swatches */}
-              <p className="text-[10px] text-white/35 uppercase tracking-wider mb-2">Color — {WALL_LABELS[selectedWall]}</p>
-              <div className="grid grid-cols-5 gap-1.5">
-                {WALL_COLORS.map(({ hex, name }) => (
-                  <button key={hex} onClick={() => setWallColors(prev => ({ ...prev, [selectedWall]: hex }))}
-                    title={name}
-                    className={`w-full aspect-square rounded-lg border-2 transition ${
-                      wallColors[selectedWall] === hex ? 'border-indigo-400 scale-110 shadow-lg shadow-indigo-500/30' : 'border-transparent hover:border-white/30'
-                    }`}
-                    style={{ backgroundColor: hex }} />
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Color</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7, marginBottom: 14 }}>
+                {WALL_COLORS.map(c => (
+                  <button key={c.hex} onClick={() => setWallColor(selectedWall, c.hex)} style={{ padding: '9px 8px', borderRadius: 8, border: `2px solid ${wallColors[selectedWall] === c.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 20, height: 20, borderRadius: 4, background: c.hex, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, display: 'block' }} />
+                    <span style={{ fontSize: '0.73rem', color: wallColors[selectedWall] === c.hex ? '#e2e8f0' : '#94a3b8', fontWeight: wallColors[selectedWall] === c.hex ? 600 : 400 }}>{c.name}</span>
+                  </button>
                 ))}
               </div>
-              <p className="text-[10px] text-white/25 mt-3">También puedes hacer clic en una pared en la escena 3D para seleccionarla.</p>
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 8px' }}>Personalizado</p>
+              <input type="color" value={wallColors[selectedWall]} onChange={e => setWallColor(selectedWall, e.target.value)} style={{ width: '100%', height: 38, borderRadius: 8, border: '1px solid #334155', background: 'transparent', cursor: 'pointer', padding: 2, marginBottom: 12 }} />
+              <button onClick={() => setWallColors({ back: wallColors[selectedWall], left: wallColors[selectedWall], right: wallColors[selectedWall], ceiling: wallColors[selectedWall] })} style={{ width: '100%', padding: '9px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}>
+                Aplicar a todas las paredes
+              </button>
             </div>
           )}
 
-          {/* ── Floor tab ── */}
           {activeTab === 'floor' && (
-            <div className="flex-1 overflow-y-auto p-3">
-              <p className="text-[10px] text-white/35 uppercase tracking-wider mb-2">Tinte del suelo</p>
-              <div className="grid grid-cols-3 gap-2">
-                {FLOOR_TINTS.map(({ hex, name }) => (
-                  <button key={hex} onClick={() => setFloorTint(hex)}
-                    className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition ${
-                      floorTint === hex ? 'border-indigo-400 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:border-white/25'
-                    }`}>
-                    <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: hex }} />
-                    <span className="text-[10px] text-white/60 text-center leading-tight">{name}</span>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tono de suelo</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7 }}>
+                {FLOOR_TINTS.map(t => (
+                  <button key={t.hex} onClick={() => setFloorTint(t.hex)} style={{ padding: '10px 8px', borderRadius: 8, border: `2px solid ${floorTint === t.hex ? '#3b82f6' : 'transparent'}`, background: '#1e293b', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 44, height: 28, borderRadius: 6, background: t.hex === '#ffffff' ? 'linear-gradient(135deg,#e8d5a0 0%,#c9a97a 50%,#a07840 100%)' : t.hex, border: '1px solid rgba(255,255,255,0.12)', display: 'block' }} />
+                    <span style={{ fontSize: '0.72rem', color: floorTint === t.hex ? '#e2e8f0' : '#94a3b8', fontWeight: floorTint === t.hex ? 600 : 400 }}>{t.name}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* ── Uploaded image preview ── */}
-          {uploadedImageUrl && (
-            <div className="border-t border-white/8 p-3">
-              <p className="text-[10px] text-white/35 uppercase tracking-wider mb-2">Imagen de referencia</p>
-              <img src={uploadedImageUrl} alt="Referencia" className="w-full rounded-xl object-cover max-h-36" />
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="p-3 border-t border-white/8">
-            <p className="text-[10px] text-white/20 text-center">Visitas Virtuales · Sin tarjeta · 2 tours incluidos</p>
+          <div style={{ padding: '14px 12px', borderTop: '1px solid #1f2937', flexShrink: 0 }}>
+            <a href="/login" style={{ display: 'block', padding: '11px', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', color: '#fff', borderRadius: 8, textAlign: 'center', fontWeight: 600, fontSize: '0.9rem', textDecoration: 'none', marginBottom: 8 }}>
+              Guardar y crear cuenta →
+            </a>
+            <p style={{ color: '#475569', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>Gratis · Sin tarjeta · 2 tours incluidos</p>
           </div>
         </div>
       )}
