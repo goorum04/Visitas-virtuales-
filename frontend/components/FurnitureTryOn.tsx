@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 interface CatalogItem {
@@ -19,7 +20,7 @@ interface PlacedItem {
   baseScale: number;
 }
 
-// Modelos reales CC0 (Poly Haven), a escala real en metros, servidos desde /public/models
+// Modelos reales CC0 (Poly Haven) + generados por IA, a escala real en metros
 const CATALOG: CatalogItem[] = [
   { slug: 'sofa_ia_01',               name: 'Sofá terracota (IA)', category: 'Sala', file: 'sofa_ia_01.glb' },
   { slug: 'Sofa_01',                  name: 'Sofá 2 plazas',       category: 'Sala' },
@@ -36,13 +37,40 @@ const CATALOG: CatalogItem[] = [
 
 const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Almacenaje', 'Decor'];
 
+const WALL_H = 3;
+const CAM_H = 1.35;
+const FOV = 52;
+
+// Proyecta la foto desde la posición original de la cámara sobre la geometría de la habitación
+const projVert = /* glsl */ `
+  varying vec4 vProj;
+  uniform mat4 uProjectorVP;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vProj = uProjectorVP * wp;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+const projFrag = /* glsl */ `
+  uniform sampler2D uMap;
+  varying vec4 vProj;
+  void main() {
+    vec2 uv = clamp((vProj.xy / max(vProj.w, 0.0001)) * 0.5 + 0.5, 0.0, 1.0);
+    gl_FragColor = texture2D(uMap, uv);
+    #include <colorspace_fragment>
+  }
+`;
+
 export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const projectorRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const projMatRef = useRef<THREE.ShaderMaterial | null>(null);
+  const roomGroupRef = useRef<THREE.Group | null>(null);
   const placedRef = useRef<PlacedItem[]>([]);
   const selectedRef = useRef<PlacedItem | null>(null);
   const ringRef = useRef<THREE.Mesh | null>(null);
@@ -57,7 +85,10 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [isNarrow, setIsNarrow] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [tilt, setTilt] = useState(-0.22); // inclinación de cámara para casar con la foto
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [tilt, setTilt] = useState(-0.2);   // inclinación de la cámara original (casar horizonte)
+  const [roomW, setRoomW] = useState(4.6);  // ancho de la habitación (m)
+  const [roomD, setRoomD] = useState(5.4);  // profundidad hasta la pared del fondo (m)
   const [itemScale, setItemScale] = useState(1);
 
   useEffect(() => {
@@ -77,30 +108,46 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     if (!canvas || !frame || !wrap) return;
 
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#05070d');
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.05, 60);
-    camera.position.set(0, 1.35, 3.6);
-    camera.rotation.x = tilt;
+    const camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.05, 60);
+    camera.position.set(0, CAM_H, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    const projector = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.1, 60);
+    projector.position.set(0, CAM_H, 0);
+    projectorRef.current = projector;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    rendererRef.current = renderer;
 
-    // Entorno neutro para reflejos PBR realistas (sin descargas externas)
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    // La foto del salón como fondo
+    // Material de proyección (la foto pintada sobre suelo/paredes/techo)
+    const projMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap: { value: null },
+        uProjectorVP: { value: new THREE.Matrix4() },
+      },
+      vertexShader: projVert,
+      fragmentShader: projFrag,
+      side: THREE.DoubleSide,
+    });
+    projMat.toneMapped = false;
+    projMatRef.current = projMat;
+
     new THREE.TextureLoader().load(photoUrl, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
-      scene.background = tex;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      projMat.uniforms.uMap.value = tex;
       const img = tex.image as HTMLImageElement;
       if (img?.width) {
         photoAspectRef.current = img.width / img.height;
@@ -108,7 +155,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       }
     });
 
-    // Luz que imita luz de ventana + relleno
+    // Luz para los muebles (la habitación lleva la luz "horneada" en la foto)
     const hemi = new THREE.HemisphereLight('#dfe8f5', '#7a6a58', 0.9);
     scene.add(hemi);
     const dir = new THREE.DirectionalLight('#fff2dd', 1.8);
@@ -118,15 +165,15 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     dir.shadow.bias = -0.0004;
     scene.add(dir);
 
-    // Suelo invisible: recibe sombras y sirve para arrastrar
-    const ground = new THREE.Mesh(
+    // Sombra de contacto sobre el suelo fotográfico
+    const shadowPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(40, 40),
-      new THREE.ShadowMaterial({ opacity: 0.32 })
+      new THREE.ShadowMaterial({ opacity: 0.3 })
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    ground.name = 'ground';
-    scene.add(ground);
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = 0.008;
+    shadowPlane.receiveShadow = true;
+    scene.add(shadowPlane);
 
     // Anillo de selección
     const ring = new THREE.Mesh(
@@ -139,7 +186,23 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     scene.add(ring);
     ringRef.current = ring;
 
-    // El canvas se ajusta al hueco disponible manteniendo el aspecto de la foto
+    // Órbita limitada: girar la habitación sin salirse de lo que cubre la foto
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.enablePan = false;
+    controls.minDistance = 1.2;
+    controls.maxDistance = 4.5;
+    controls.minAzimuthAngle = -0.55;
+    controls.maxAzimuthAngle = 0.55;
+    controls.minPolarAngle = Math.PI / 2 - 0.45;
+    controls.maxPolarAngle = Math.PI / 2 + 0.25;
+    // fijar el objetivo antes del primer update: si queda justo bajo la cámara, la vista se degenera
+    controls.target.set(0, 1.05, -2.4);
+    camera.position.set(0, CAM_H, 0);
+    controls.update();
+    controlsRef.current = controls;
+
     const fit = () => {
       const aw = wrap.clientWidth, ah = wrap.clientHeight;
       if (!aw || !ah) return;
@@ -150,6 +213,8 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       frame.style.height = `${h}px`;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      projector.aspect = w / h;
+      projector.updateProjectionMatrix();
       renderer.setSize(w, h, false);
     };
     const ro = new ResizeObserver(fit);
@@ -157,11 +222,12 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     window.addEventListener('resize', fit);
     fit();
 
-    // Arrastre por raycast sobre el plano del suelo
+    // Arrastre de muebles por raycast; si no tocas un mueble, la órbita gira la habitación
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     let dragging: PlacedItem | null = null;
+    let downPos: { x: number; y: number } | null = null;
 
     const toNdc = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -184,16 +250,15 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
 
     const onDown = (e: PointerEvent) => {
       toNdc(e);
+      downPos = { x: e.clientX, y: e.clientY };
       const hit = pickPlaced();
       if (hit) {
         dragging = hit;
+        controls.enabled = false;
         selectedRef.current = hit;
         setSelectedUid(hit.uid);
         setItemScale(hit.object.scale.x / hit.baseScale);
         canvas.setPointerCapture(e.pointerId);
-      } else {
-        selectedRef.current = null;
-        setSelectedUid(null);
       }
     };
     const onMove = (e: PointerEvent) => {
@@ -202,12 +267,20 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       ray.setFromCamera(ndc, camera);
       const pt = new THREE.Vector3();
       if (ray.ray.intersectPlane(plane, pt)) {
-        dragging.object.position.set(pt.x, 0, Math.min(pt.z, camera.position.z - 0.5));
+        dragging.object.position.set(pt.x, 0, pt.z);
       }
     };
     const onUp = (e: PointerEvent) => {
-      if (dragging) canvas.releasePointerCapture(e.pointerId);
-      dragging = null;
+      if (dragging) {
+        canvas.releasePointerCapture(e.pointerId);
+        dragging = null;
+        controls.enabled = true;
+      } else if (downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) < 6) {
+        // click sin arrastre sobre el fondo → deseleccionar
+        selectedRef.current = null;
+        setSelectedUid(null);
+      }
+      downPos = null;
     };
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
@@ -216,6 +289,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
 
     const animate = () => {
       animRef.current = requestAnimationFrame(animate);
+      controls.update();
       const sel = selectedRef.current;
       const ringM = ringRef.current;
       if (ringM) {
@@ -242,16 +316,84 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
       cancelAnimationFrame(animRef.current);
+      controls.dispose();
       pmrem.dispose();
       renderer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoUrl]);
 
-  // Inclinación de cámara (ajuste de perspectiva contra la foto)
+  // Geometría de la habitación (se reconstruye al ajustar ancho/profundidad)
   useEffect(() => {
-    if (cameraRef.current) cameraRef.current.rotation.x = tilt;
-  }, [tilt]);
+    const scene = sceneRef.current;
+    const projMat = projMatRef.current;
+    if (!scene || !projMat) return;
+
+    if (roomGroupRef.current) {
+      scene.remove(roomGroupRef.current);
+      roomGroupRef.current.traverse((n) => { if (n instanceof THREE.Mesh) n.geometry.dispose(); });
+    }
+
+    const g = new THREE.Group();
+    const zFront = 1.2;           // la habitación llega un poco por detrás de la cámara
+    const depth = roomD + zFront; // largo total del suelo
+    const zMid = zFront - depth / 2;
+
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(roomW, depth), projMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, 0, zMid);
+    g.add(floor);
+
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(roomW, depth), projMat);
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.set(0, WALL_H, zMid);
+    g.add(ceil);
+
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(roomW, WALL_H), projMat);
+    back.position.set(0, WALL_H / 2, -roomD);
+    g.add(back);
+
+    const left = new THREE.Mesh(new THREE.PlaneGeometry(depth, WALL_H), projMat);
+    left.rotation.y = Math.PI / 2;
+    left.position.set(-roomW / 2, WALL_H / 2, zMid);
+    g.add(left);
+
+    const right = new THREE.Mesh(new THREE.PlaneGeometry(depth, WALL_H), projMat);
+    right.rotation.y = -Math.PI / 2;
+    right.position.set(roomW / 2, WALL_H / 2, zMid);
+    g.add(right);
+
+    scene.add(g);
+    roomGroupRef.current = g;
+
+    // La órbita gira alrededor del centro de la habitación
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.target.set(0, 1.05, -roomD * 0.45);
+      controls.update();
+    }
+  }, [roomW, roomD]);
+
+  // Matriz del proyector (inclinación / encuadre de la foto original)
+  useEffect(() => {
+    const projector = projectorRef.current;
+    const projMat = projMatRef.current;
+    if (!projector || !projMat) return;
+    projector.rotation.x = tilt;
+    projector.updateMatrixWorld(true);
+    projector.updateProjectionMatrix();
+    (projMat.uniforms.uProjectorVP.value as THREE.Matrix4)
+      .multiplyMatrices(projector.projectionMatrix, projector.matrixWorldInverse);
+  }, [tilt, photoUrl]);
+
+  function resetView() {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    camera.position.set(0, CAM_H, 0);
+    controls.target.set(0, 1.05, -roomD * 0.45);
+    controls.update();
+  }
 
   // Escala del elemento seleccionado
   useEffect(() => {
@@ -284,10 +426,11 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       // Apoya el modelo en el suelo y repártelo en huecos distintos para que no se solapen
       const box = new THREE.Box3().setFromObject(obj);
       const n = placedRef.current.length;
-      const slotX = [0, 1.5, -1.5, 2.3, -2.3, 0.8, -0.8];
+      const maxX = roomW / 2 - 0.6;
+      const slotX = [0, 1.5, -1.5, 2.3, -2.3, 0.8, -0.8].map((x) => Math.max(-maxX, Math.min(maxX, x)));
       obj.position.y = -box.min.y;
       obj.position.x = slotX[n % slotX.length];
-      obj.position.z = 0.15;
+      obj.position.z = -roomD * 0.45;
       obj.rotation.y = (Math.random() - 0.5) * 0.3;
       scene.add(obj);
       const entry: PlacedItem = { uid: `${item.slug}-${Date.now()}`, item, object: obj, baseScale: obj.scale.x };
@@ -329,9 +472,11 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     ? { position: 'absolute', left: 0, right: 0, bottom: 0, height: '58%', background: '#0f172af5', borderTop: '1px solid #1f2937', borderRadius: '16px 16px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 10, boxShadow: '0 -10px 30px rgba(0,0,0,.5)' }
     : { width: 300, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 };
 
+  const sliderRow: React.CSSProperties = { color: '#94a3b8', fontSize: '0.7rem', display: 'flex', flexDirection: 'column', gap: 3 };
+
   return (
     <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
-      {/* Visor: la foto con los muebles encima */}
+      {/* Visor: la habitación 3D reconstruida desde la foto */}
       <div ref={wrapRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0, background: '#05070d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div ref={frameRef} style={{ position: 'relative' }}>
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: 'grab' }} />
@@ -339,7 +484,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
 
         {!isNarrow && (
           <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#cbd5e1', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-            Toca un mueble del catálogo para añadirlo · Arrástralo para moverlo por tu salón
+            Arrastra el fondo para girar la habitación · Arrastra un mueble para moverlo · Rueda para acercarte
           </div>
         )}
 
@@ -358,19 +503,39 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
               <button onClick={() => rotateSelected(-Math.PI / 12)} style={{ flex: 1, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', cursor: 'pointer', padding: '6px 0', fontSize: '0.85rem' }}>Girar ⟳</button>
               <button onClick={() => removeItem(selected.uid)} style={{ background: '#7f1d1d', border: '1px solid #b91c1c', borderRadius: 6, color: '#fecaca', cursor: 'pointer', padding: '6px 10px', fontSize: '0.85rem' }}>🗑</button>
             </div>
-            <label style={{ color: '#94a3b8', fontSize: '0.7rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <label style={sliderRow}>
               Tamaño
               <input type="range" min={0.6} max={1.6} step={0.02} value={itemScale} onChange={(e) => setItemScale(parseFloat(e.target.value))} />
             </label>
           </div>
         )}
 
-        {/* Ajuste de perspectiva */}
-        <div style={{ position: 'absolute', bottom: isNarrow ? 10 : 44, right: 14, background: 'rgba(0,0,0,0.65)', border: '1px solid #334155', borderRadius: 10, padding: '8px 12px', zIndex: 11 }}>
-          <label style={{ color: '#94a3b8', fontSize: '0.7rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
-            Perspectiva
-            <input type="range" min={-0.5} max={-0.05} step={0.01} value={tilt} onChange={(e) => setTilt(parseFloat(e.target.value))} style={{ width: 110 }} />
-          </label>
+        {/* Ajuste de la habitación */}
+        <div style={{ position: 'absolute', bottom: isNarrow ? 10 : 44, right: 14, background: 'rgba(0,0,0,0.7)', border: '1px solid #334155', borderRadius: 10, padding: '8px 12px', zIndex: 11, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button onClick={() => setAdjustOpen((o) => !o)}
+            style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, padding: 0, textAlign: 'left' }}>
+            📐 Ajustar habitación {adjustOpen ? '▾' : '▸'}
+          </button>
+          {adjustOpen && (
+            <>
+              <label style={sliderRow}>
+                Ancho ({roomW.toFixed(1)} m)
+                <input type="range" min={2.6} max={8} step={0.1} value={roomW} onChange={(e) => setRoomW(parseFloat(e.target.value))} style={{ width: 130 }} />
+              </label>
+              <label style={sliderRow}>
+                Fondo ({roomD.toFixed(1)} m)
+                <input type="range" min={2.6} max={9} step={0.1} value={roomD} onChange={(e) => setRoomD(parseFloat(e.target.value))} style={{ width: 130 }} />
+              </label>
+              <label style={sliderRow}>
+                Horizonte
+                <input type="range" min={-0.5} max={-0.02} step={0.01} value={tilt} onChange={(e) => setTilt(parseFloat(e.target.value))} style={{ width: 130 }} />
+              </label>
+              <button onClick={resetView}
+                style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', cursor: 'pointer', padding: '5px 0', fontSize: '0.72rem' }}>
+                ↺ Vista original
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -407,7 +572,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
                   </div>
                   <div style={{ padding: '7px 9px' }}>
                     <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#e2e8f0' }}>{item.name}</div>
-                    <div style={{ fontSize: '0.66rem', color: '#475569' }}>{item.category} · CC0</div>
+                    <div style={{ fontSize: '0.66rem', color: '#475569' }}>{item.category}{item.file ? '' : ' · CC0'}</div>
                   </div>
                 </button>
               ))}
@@ -437,7 +602,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
               Recrear mi salón en 3D real →
             </a>
             <p style={{ color: '#475569', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>
-              La versión completa reconstruye tu habitación en 3D navegable
+              La versión completa reconstruye tu habitación con volumen real
             </p>
           </div>
         </div>
