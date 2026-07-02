@@ -16,12 +16,9 @@ const FurnitureTryOn = nextDynamic(() => import('../../components/FurnitureTryOn
   ),
 });
 
-// Salón predeterminado: tres vistas desde el mismo punto (frente, izquierda, derecha)
-const EXAMPLE_PHOTOS = ['/demo-room.png', '/demo-room-left.png', '/demo-room-right.png'];
-
 export default function DemoPage() {
-  const [photos, setPhotos] = useState<string[]>(EXAMPLE_PHOTOS);
-  const [isExample, setIsExample] = useState(true);
+  // null → salón de demostración construido en 3D real (giro libre, sin deformaciones)
+  const [photos, setPhotos] = useState<string[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFiles(files: FileList | null) {
@@ -32,7 +29,6 @@ export default function DemoPage() {
       .map((f) => URL.createObjectURL(f));
     if (!urls.length) return;
     setPhotos(urls);
-    setIsExample(false);
   }
 
   return (
@@ -43,8 +39,8 @@ export default function DemoPage() {
           <span style={{ background: '#3b82f622', color: '#3b82f6', fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>DEMO</span>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
-          {!isExample && (
-            <button onClick={() => { setPhotos(EXAMPLE_PHOTOS); setIsExample(true); }}
+          {photos && (
+            <button onClick={() => setPhotos(null)}
               style={{ padding: '7px 12px', background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               ↺ Salón de ejemplo
             </button>
@@ -62,7 +58,7 @@ export default function DemoPage() {
         </div>
       </header>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <FurnitureTryOn key={photos.join('|')} photoUrls={photos} />
+        <FurnitureTryOn key={photos ? photos.join('|') : 'salon-3d'} photoUrls={photos} />
       </div>
     </main>
   );

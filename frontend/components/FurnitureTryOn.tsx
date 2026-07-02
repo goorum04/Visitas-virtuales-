@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { buildSyntheticRoom, addSyntheticLights, ROOM } from './SyntheticRoom';
 
 interface CatalogItem {
   slug: string;
@@ -148,7 +149,9 @@ const projFrag = /* glsl */ `
   }
 `;
 
-export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
+export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] | null }) {
+  // Sin fotos: salón de demostración construido en 3D real (giro libre, sin deformaciones)
+  const synthetic = !photoUrls || photoUrls.length === 0;
   const wrapRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -168,7 +171,8 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
   const hemiRef = useRef<THREE.HemisphereLight | null>(null);
   const baseLightRef = useRef({ dir: 1.8, hemi: 0.9 });
 
-  const nPhotos = Math.min(photoUrls.length, 3);
+  const nPhotos = Math.min(photoUrls?.length ?? 0, 3);
+  const photosKey = (photoUrls ?? []).join('|');
 
   const [placed, setPlaced] = useState<PlacedItem[]>([]);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
@@ -240,6 +244,17 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.5;
 
+    if (synthetic) {
+      scene.background = new THREE.Color('#0a0c12');
+      buildSyntheticRoom(scene, new THREE.TextureLoader());
+      const lights = addSyntheticLights(scene);
+      dirRef.current = lights.dir;
+      hemiRef.current = lights.hemi;
+      baseLightRef.current = { dir: lights.dir.intensity, hemi: lights.hemi.intensity };
+      scene.environmentIntensity = 0.45;
+      renderer.toneMappingExposure = 1.05;
+    }
+
     const dummyTex = new THREE.Texture();
     const projMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -257,6 +272,7 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
     projMat.toneMapped = false;
     projMatRef.current = projMat;
 
+    if (!synthetic) {
     // Luz para los muebles: se calibra automáticamente con la foto frontal en cuanto carga
     const hemi = new THREE.HemisphereLight('#dfe8f5', '#7a6a58', 0.9);
     scene.add(hemi);
@@ -272,7 +288,7 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
     dirRef.current = dir;
 
     const texLoader = new THREE.TextureLoader();
-    photoUrls.slice(0, 3).forEach((url, i) => {
+    (photoUrls ?? []).slice(0, 3).forEach((url, i) => {
       texLoader.load(url, (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -309,6 +325,7 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
         }
       });
     });
+    } // fin modo fotos
 
     // Sombra de contacto sobre el suelo fotográfico
     const shadowPlane = new THREE.Mesh(
@@ -331,31 +348,48 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
     scene.add(ring);
     ringRef.current = ring;
 
-    // Órbita: con más fotos, más ángulo útil sin zonas oscuras
-    const maxAz = nPhotos >= 3 ? 0.95 : nPhotos === 2 ? 0.7 : 0.32;
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
     controls.enablePan = false;
-    controls.minDistance = 1.2;
-    controls.maxDistance = 4.5;
-    controls.minAzimuthAngle = -maxAz;
-    controls.maxAzimuthAngle = maxAz;
-    controls.minPolarAngle = Math.PI / 2 - 0.45;
-    controls.maxPolarAngle = Math.PI / 2 + 0.25;
-    // el objetivo debe estar exactamente en la línea de mira del proyector frontal:
-    // así la vista inicial coincide píxel a píxel con la foto (sin dobles imágenes)
-    controls.target.set(0, CAM_H + 2.4 * Math.tan(-0.2), -2.4);
-    camera.position.set(0, CAM_H, 0);
+    if (synthetic) {
+      // habitación 3D real: giro amplio y libre, nada se deforma
+      // (distancia acotada para que la cámara no atraviese paredes ni cortinas)
+      controls.minDistance = 1.3;
+      controls.maxDistance = 2.4;
+      controls.minAzimuthAngle = -1.05;
+      controls.maxAzimuthAngle = 1.05;
+      controls.minPolarAngle = Math.PI / 2 - 0.55;
+      controls.maxPolarAngle = Math.PI / 2 + 0.22;
+      controls.target.set(-0.15, 1.0, -0.8);
+      camera.position.set(0.55, 1.48, 2.45);
+    } else {
+      // Órbita: con más fotos, más ángulo útil sin zonas oscuras
+      const maxAz = nPhotos >= 3 ? 0.95 : nPhotos === 2 ? 0.7 : 0.32;
+      controls.minDistance = 1.2;
+      controls.maxDistance = 4.5;
+      controls.minAzimuthAngle = -maxAz;
+      controls.maxAzimuthAngle = maxAz;
+      controls.minPolarAngle = Math.PI / 2 - 0.45;
+      controls.maxPolarAngle = Math.PI / 2 + 0.25;
+      // el objetivo debe estar exactamente en la línea de mira del proyector frontal:
+      // así la vista inicial coincide píxel a píxel con la foto (sin dobles imágenes)
+      controls.target.set(0, CAM_H + 2.4 * Math.tan(-0.2), -2.4);
+      camera.position.set(0, CAM_H, 0);
+    }
     controls.update();
     controlsRef.current = controls;
 
     const fit = () => {
       const aw = wrap.clientWidth, ah = wrap.clientHeight;
       if (!aw || !ah) return;
-      const pa = photoAspectsRef.current[0];
-      let w = aw, h = aw / pa;
-      if (h > ah) { h = ah; w = ah * pa; }
+      let w = aw, h = ah;
+      if (!synthetic) {
+        // en modo fotos el lienzo respeta el aspecto de la foto frontal
+        const pa = photoAspectsRef.current[0];
+        w = aw; h = aw / pa;
+        if (h > ah) { h = ah; w = ah * pa; }
+      }
       frame.style.width = `${w}px`;
       frame.style.height = `${h}px`;
       camera.aspect = w / h;
@@ -471,10 +505,11 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
       renderer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photoUrls.join('|')]);
+  }, [photosKey]);
 
-  // Geometría de la habitación (se reconstruye al ajustar ancho/profundidad)
+  // Geometría de la habitación en modo fotos (se reconstruye al ajustar ancho/profundidad)
   useEffect(() => {
+    if (synthetic) return;
     const scene = sceneRef.current;
     const projMat = projMatRef.current;
     if (!scene || !projMat) return;
@@ -524,22 +559,28 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
       controls.update();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomW, roomD, photoUrls.join('|')]);
+  }, [roomW, roomD, photosKey]);
 
   // Recalcular proyectores al cambiar la inclinación (y realinear la vista)
   useEffect(() => {
+    if (synthetic) return;
     updateProjectors(tilt);
     resetView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tilt, photoUrls.join('|')]);
+  }, [tilt, photosKey]);
 
   function resetView() {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
-    camera.position.set(0, CAM_H, 0);
-    const tz = roomD * 0.45;
-    controls.target.set(0, CAM_H + tz * Math.tan(tilt), -tz);
+    if (synthetic) {
+      camera.position.set(0.55, 1.48, 2.45);
+      controls.target.set(-0.15, 1.0, -0.8);
+    } else {
+      camera.position.set(0, CAM_H, 0);
+      const tz = roomD * 0.45;
+      controls.target.set(0, CAM_H + tz * Math.tan(tilt), -tz);
+    }
     controls.update();
   }
 
@@ -595,11 +636,11 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
       // Apoya el modelo en el suelo y repártelo en huecos distintos para que no se solapen
       const box = new THREE.Box3().setFromObject(obj);
       const n = placedRef.current.length;
-      const maxX = roomW / 2 - 0.6;
+      const maxX = (synthetic ? ROOM.W / 2 : roomW / 2) - 0.6;
       const slotX = [0, 1.5, -1.5, 2.3, -2.3, 0.8, -0.8].map((x) => Math.max(-maxX, Math.min(maxX, x)));
       obj.position.y = -box.min.y;
       obj.position.x = slotX[n % slotX.length];
-      obj.position.z = -Math.min(roomD * 0.62, roomD - 0.8);
+      obj.position.z = synthetic ? -1.1 : -Math.min(roomD * 0.62, roomD - 0.8);
       obj.rotation.y = (Math.random() - 0.5) * 0.3;
       scene.add(obj);
       const entry: PlacedItem = { uid: `${item.slug}-${Date.now()}`, item, object: obj, baseScale: obj.scale.x };
@@ -689,18 +730,22 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
           </button>
           {adjustOpen && (
             <>
-              <label style={sliderRow}>
-                Ancho ({roomW.toFixed(1)} m)
-                <input type="range" min={2.6} max={8} step={0.1} value={roomW} onChange={(e) => setRoomW(parseFloat(e.target.value))} style={{ width: 130 }} />
-              </label>
-              <label style={sliderRow}>
-                Fondo ({roomD.toFixed(1)} m)
-                <input type="range" min={2.6} max={9} step={0.1} value={roomD} onChange={(e) => setRoomD(parseFloat(e.target.value))} style={{ width: 130 }} />
-              </label>
-              <label style={sliderRow}>
-                Horizonte
-                <input type="range" min={-0.5} max={-0.02} step={0.01} value={tilt} onChange={(e) => setTilt(parseFloat(e.target.value))} style={{ width: 130 }} />
-              </label>
+              {!synthetic && (
+                <>
+                  <label style={sliderRow}>
+                    Ancho ({roomW.toFixed(1)} m)
+                    <input type="range" min={2.6} max={8} step={0.1} value={roomW} onChange={(e) => setRoomW(parseFloat(e.target.value))} style={{ width: 130 }} />
+                  </label>
+                  <label style={sliderRow}>
+                    Fondo ({roomD.toFixed(1)} m)
+                    <input type="range" min={2.6} max={9} step={0.1} value={roomD} onChange={(e) => setRoomD(parseFloat(e.target.value))} style={{ width: 130 }} />
+                  </label>
+                  <label style={sliderRow}>
+                    Horizonte
+                    <input type="range" min={-0.5} max={-0.02} step={0.01} value={tilt} onChange={(e) => setTilt(parseFloat(e.target.value))} style={{ width: 130 }} />
+                  </label>
+                </>
+              )}
               <label style={sliderRow}>
                 Luz de los muebles
                 <input type="range" min={0.5} max={1.7} step={0.05} value={lightMul} onChange={(e) => setLightMul(parseFloat(e.target.value))} style={{ width: 130 }} />
