@@ -70,17 +70,17 @@ export default function DemoPage() {
     return (
       <main style={{ height: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <header style={{ padding: '10px 20px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0a0a0a', flexShrink: 0, zIndex: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <button onClick={() => { setStep('upload'); setUploadedImage(null); setProgress(0); }}
-              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.875rem', padding: 0 }}>
+              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.875rem', padding: 0, whiteSpace: 'nowrap' }}>
               ← Volver
             </button>
             <span style={{ color: '#1f2937' }}>|</span>
-            <span style={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.95rem' }}>Editor de Habitación 3D</span>
+            <span style={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Editor de Habitación 3D</span>
             <span style={{ background: '#3b82f622', color: '#3b82f6', fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>DEMO</span>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <a href="/login" style={{ padding: '7px 16px', background: '#3b82f6', color: '#fff', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, textDecoration: 'none' }}>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <a href="/login" style={{ padding: '7px 16px', background: '#3b82f6', color: '#fff', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
               Guardar proyecto →
             </a>
           </div>

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 interface FurnitureItem {
@@ -17,7 +16,7 @@ interface FurnitureItem {
 interface PlacedItem {
   uid: string;
   item: FurnitureItem;
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D;
 }
 
 const WALL_COLORS = [
@@ -50,6 +49,160 @@ const FURNITURE_CATALOG: FurnitureItem[] = [
 
 const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Dormit.', 'Electr.', 'Decor'];
 
+// Muebles iniciales para que la habitación no aparezca vacía
+const STARTER_LAYOUT: { id: string; pos: [number, number]; rotY: number }[] = [
+  { id: 'alfombra1', pos: [0, -0.4],    rotY: 0 },
+  { id: 'sofa1',     pos: [0, -2.35],   rotY: 0 },
+  { id: 'mesa1',     pos: [0, -0.6],    rotY: 0 },
+  { id: 'lampara1',  pos: [1.6, -2.4],  rotY: 0 },
+  { id: 'planta1',   pos: [-2.4, -2.4], rotY: 0 },
+  { id: 'estante1',  pos: [2.7, -0.8],  rotY: -Math.PI / 2 },
+  { id: 'tv1',       pos: [-2.68, 0.4], rotY: Math.PI / 2 },
+];
+
+function darken(hex: string, f: number): string {
+  const c = new THREE.Color(hex);
+  c.multiplyScalar(f);
+  return `#${c.getHexString()}`;
+}
+
+// Construye una silueta reconocible por tipo de mueble (grupo con origen en el suelo)
+function buildFurnitureMesh(item: FurnitureItem): THREE.Group {
+  const g = new THREE.Group();
+  const std = (color: string, roughness = 0.8) => new THREE.MeshStandardMaterial({ color, roughness });
+  const box = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    g.add(mesh);
+    return mesh;
+  };
+  const cyl = (rt: number, rb: number, h: number, m: THREE.Material, x: number, y: number, z: number) => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 20), m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    g.add(mesh);
+    return mesh;
+  };
+  const [W, H, D] = item.size;
+  const main = std(item.color);
+  const dark = std(darken(item.color, 0.7));
+
+  switch (item.id) {
+    case 'sofa1':
+    case 'sofa2': {
+      const armW = 0.16, baseH = H * 0.5;
+      box(W, baseH, D, main, 0, 0.08 + baseH / 2, 0);                       // asiento
+      box(W, H * 0.85, 0.18, dark, 0, 0.08 + H * 0.85 / 2, -D / 2 + 0.09);  // respaldo
+      box(armW, H * 0.75, D, dark, -W / 2 + armW / 2, 0.08 + H * 0.75 / 2, 0);
+      box(armW, H * 0.75, D, dark, W / 2 - armW / 2, 0.08 + H * 0.75 / 2, 0);
+      const cushW = (W - armW * 2) / 3 - 0.03;
+      for (let i = 0; i < 3; i++) {
+        box(cushW, 0.12, D - 0.3, std(darken(item.color, 1.15)), -W / 2 + armW + cushW / 2 + i * (cushW + 0.045), 0.08 + baseH + 0.05, 0.04);
+      }
+      break;
+    }
+    case 'mesa1':
+    case 'mesa2': {
+      const legT = 0.06, topT = 0.06;
+      box(W, topT, D, main, 0, H - topT / 2, 0);
+      const lx = W / 2 - legT, lz = D / 2 - legT;
+      [[-lx, -lz], [lx, -lz], [-lx, lz], [lx, lz]].forEach(([x, z]) =>
+        box(legT, H - topT, legT, dark, x, (H - topT) / 2, z));
+      break;
+    }
+    case 'silla1': {
+      const legT = 0.045, seatH = H * 0.5;
+      box(W, 0.06, D, main, 0, seatH, 0);
+      box(W, H - seatH, 0.06, main, 0, seatH + (H - seatH) / 2, -D / 2 + 0.03);
+      const lx = W / 2 - legT, lz = D / 2 - legT;
+      [[-lx, -lz], [lx, -lz], [-lx, lz], [lx, lz]].forEach(([x, z]) =>
+        box(legT, seatH, legT, dark, x, seatH / 2, z));
+      break;
+    }
+    case 'cama1': {
+      box(W, 0.22, D, dark, 0, 0.15, 0);                                  // base
+      box(W - 0.1, 0.22, D - 0.1, std('#f0ece2', 0.9), 0, 0.37, 0);       // colchón
+      box(W, H * 1.4, 0.09, main, 0, H * 0.7, -D / 2 + 0.045);            // cabecero
+      box(W * 0.38, 0.1, 0.5, std('#dcd6c8'), -W * 0.24, 0.5, -D / 2 + 0.45); // almohadas
+      box(W * 0.38, 0.1, 0.5, std('#dcd6c8'), W * 0.24, 0.5, -D / 2 + 0.45);
+      break;
+    }
+    case 'armario1': {
+      box(W, H, D, main, 0, H / 2, 0);
+      box(0.02, H - 0.2, 0.02, dark, 0, H / 2, D / 2 + 0.005);            // junta puertas
+      box(0.04, 0.3, 0.05, dark, -0.09, H / 2, D / 2 + 0.02);             // tiradores
+      box(0.04, 0.3, 0.05, dark, 0.09, H / 2, D / 2 + 0.02);
+      break;
+    }
+    case 'lampara1': {
+      cyl(0.16, 0.18, 0.04, dark, 0, 0.02, 0);
+      cyl(0.02, 0.02, H - 0.4, dark, 0, (H - 0.4) / 2, 0);
+      const shade = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.17, 0.3, 20, 1, true),
+        new THREE.MeshStandardMaterial({ color: '#f5e6c4', emissive: '#c9a86a', emissiveIntensity: 0.35, side: THREE.DoubleSide })
+      );
+      shade.position.y = H - 0.28;
+      g.add(shade);
+      const bulb = new THREE.PointLight('#ffd9a0', 2.5, 4, 2);
+      bulb.position.set(0, H - 0.3, 0);
+      g.add(bulb);
+      break;
+    }
+    case 'planta1': {
+      cyl(0.16, 0.12, 0.3, std('#a8552f'), 0, 0.15, 0);
+      const leaf = std('#3a7d44', 0.95);
+      [[0, H * 0.62, 0, 0.26], [0.13, H * 0.48, 0.1, 0.18], [-0.14, H * 0.52, -0.06, 0.19], [0.02, H * 0.8, -0.04, 0.17]].forEach(([x, y, z, r]) => {
+        const s = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), leaf);
+        s.position.set(x, y, z);
+        s.castShadow = true;
+        g.add(s);
+      });
+      break;
+    }
+    case 'tv1': {
+      box(W, 0.42, D, std('#5a4632'), 0, 0.21, 0);                        // mueble
+      const screen = box(W * 0.8, W * 0.45, 0.05, std('#101418', 0.35), 0, 0.42 + 0.12 + W * 0.225, 0);
+      (screen.material as THREE.MeshStandardMaterial).emissive = new THREE.Color('#1a2c40');
+      (screen.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5;
+      break;
+    }
+    case 'estante1': {
+      const sideT = 0.04;
+      box(sideT, H, D, main, -W / 2 + sideT / 2, H / 2, 0);
+      box(sideT, H, D, main, W / 2 - sideT / 2, H / 2, 0);
+      for (let i = 0; i <= 4; i++) box(W - sideT * 2, 0.035, D, main, 0, 0.02 + (H - 0.04) * (i / 4), 0);
+      const bookMats = ['#b5533c', '#3f6b8e', '#c9a227', '#4a7a52'].map((c) => std(c, 0.9));
+      for (let s = 0; s < 4; s++) {
+        for (let b = 0; b < 5; b++) {
+          box(0.09, 0.26, D * 0.7, bookMats[(s + b) % 4], -W / 2 + 0.16 + b * 0.13, 0.02 + (H - 0.04) * (s / 4) + 0.15, 0);
+        }
+      }
+      break;
+    }
+    case 'alfombra1': {
+      const rug = box(W, 0.03, D, std(item.color, 1), 0, 0.015, 0);
+      rug.castShadow = false;
+      box(W - 0.24, 0.032, D - 0.24, std(darken(item.color, 0.85), 1), 0, 0.016, 0).castShadow = false;
+      break;
+    }
+    default:
+      box(W, H, D, main, 0, H / 2, 0);
+  }
+  return g;
+}
+
+function disposeObject(obj: THREE.Object3D) {
+  obj.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      const m = child.material;
+      Array.isArray(m) ? m.forEach((x) => x.dispose()) : m.dispose();
+    }
+  });
+}
+
 export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: string | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -65,26 +218,38 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [placed, setPlaced] = useState<PlacedItem[]>([]);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+
+  // En pantallas estrechas (móvil o iframe pequeño) el panel pasa a hoja inferior y arranca cerrado
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const apply = () => setIsNarrow(mq.matches);
+    apply();
+    if (mq.matches) setPanelOpen(false);
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#1a1a2e');
+    scene.background = new THREE.Color('#151a28');
     sceneRef.current = scene;
 
     const W = canvas.parentElement?.clientWidth || 800;
     const H = canvas.parentElement?.clientHeight || 600;
     const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 100);
-    camera.position.set(0, 2.5, 5.5);
+    camera.position.set(3.2, 2.6, 5.6);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(W, H, false);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
@@ -94,15 +259,19 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     controls.minDistance = 2;
     controls.maxDistance = 12;
     controls.maxPolarAngle = Math.PI / 2 + 0.1;
+    controls.target.set(0, 0.9, -0.4);
     controlsRef.current = controls;
 
     // Lights
-    const ambient = new THREE.AmbientLight('#ffffff', 0.6);
+    const hemi = new THREE.HemisphereLight('#cfe0f5', '#8a6f52', 0.55);
+    scene.add(hemi);
+    const ambient = new THREE.AmbientLight('#ffffff', 0.25);
     scene.add(ambient);
-    const dirLight = new THREE.DirectionalLight('#fff8e7', 1.4);
+    const dirLight = new THREE.DirectionalLight('#fff4dd', 1.6);
     dirLight.position.set(3, 6, 4);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.set(1024, 1024);
+    dirLight.shadow.mapSize.set(2048, 2048);
+    dirLight.shadow.bias = -0.0004;
     scene.add(dirLight);
     const fillLight = new THREE.DirectionalLight('#c8d8f0', 0.4);
     fillLight.position.set(-4, 3, -2);
@@ -111,7 +280,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     // Room geometry
     const ROOM_W = 6, ROOM_H = 3, ROOM_D = 6;
     const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(wallColor), roughness: 0.85, metalness: 0.0 });
-    const floorMat = new THREE.MeshStandardMaterial({ color: '#b8965a', roughness: 0.9, metalness: 0.0 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: '#a5834f', roughness: 0.75, metalness: 0.0 });
     const ceilMat  = new THREE.MeshStandardMaterial({ color: '#faf7f2', roughness: 0.9 });
 
     wallMatsRef.current = [wallMat];
@@ -120,6 +289,14 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
+
+    // Lamas del suelo (detalle sutil)
+    const plankMat = new THREE.MeshStandardMaterial({ color: '#96733f', roughness: 0.8 });
+    for (let i = 1; i < 8; i++) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.002, ROOM_D), plankMat);
+      line.position.set(-ROOM_W / 2 + (ROOM_W / 8) * i, 0.002, 0);
+      scene.add(line);
+    }
 
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_D), ceilMat);
     ceil.rotation.x = Math.PI / 2;
@@ -152,7 +329,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     scene.add(windowFrame);
     const windowGlass = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.3),
-      new THREE.MeshStandardMaterial({ color: '#a8d4f0', transparent: true, opacity: 0.5, metalness: 0.1 })
+      new THREE.MeshStandardMaterial({ color: '#bfe0f7', emissive: '#9cc8ea', emissiveIntensity: 0.6, transparent: true, opacity: 0.85 })
     );
     windowGlass.position.set(0, 1.8, -ROOM_D / 2 + 0.1);
     scene.add(windowGlass);
@@ -169,15 +346,32 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     makeBaseboard(ROOM_D, [-ROOM_W / 2 + 0.02, 0.06, 0], Math.PI / 2);
     makeBaseboard(ROOM_D, [ROOM_W / 2 - 0.02, 0.06, 0], Math.PI / 2);
 
-    // Handle resize
-    const onResize = () => {
+    // Habitación amueblada de inicio
+    const starter: PlacedItem[] = [];
+    STARTER_LAYOUT.forEach((slot, i) => {
+      const item = FURNITURE_CATALOG.find((f) => f.id === slot.id);
+      if (!item) return;
+      const mesh = buildFurnitureMesh(item);
+      mesh.position.set(slot.pos[0], 0, slot.pos[1]);
+      mesh.rotation.y = slot.rotY;
+      scene.add(mesh);
+      starter.push({ uid: `${item.id}-init-${i}`, item, mesh });
+    });
+    placedRef.current = starter;
+    setPlaced(starter);
+
+    // El contenedor cambia de tamaño sin que haya "resize" de ventana
+    // (apertura del modal con animación, toggle del panel, iframe) — observarlo directamente
+    const resize = () => {
       const w = canvas.parentElement?.clientWidth || 800;
       const h = canvas.parentElement?.clientHeight || 600;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      renderer.setSize(w, h, false);
     };
-    window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(resize);
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
+    window.addEventListener('resize', resize);
 
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
@@ -187,8 +381,10 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     animate();
 
     return () => {
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', resize);
+      ro.disconnect();
       cancelAnimationFrame(animFrameRef.current);
+      placedRef.current.forEach((p) => disposeObject(p.mesh));
       renderer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,18 +399,16 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const scene = sceneRef.current;
     if (!scene) return;
 
-    const geo = new THREE.BoxGeometry(...item.size);
-    const mat = new THREE.MeshStandardMaterial({ color: item.color, roughness: 0.8 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mesh = buildFurnitureMesh(item);
 
     const angle = Math.random() * Math.PI * 2;
-    const radius = 0.8 + Math.random() * 1.4;
+    const radius = 0.6 + Math.random() * 1.2;
+    const maxX = 3 - item.size[0] / 2 - 0.1;
+    const maxZ = 3 - item.size[2] / 2 - 0.1;
     mesh.position.set(
-      Math.cos(angle) * radius,
-      item.size[1] / 2,
-      Math.sin(angle) * radius
+      Math.max(-maxX, Math.min(maxX, Math.cos(angle) * radius)),
+      0,
+      Math.max(-maxZ, Math.min(maxZ, Math.sin(angle) * radius))
     );
     mesh.rotation.y = Math.random() * Math.PI * 0.5 - Math.PI * 0.25;
     scene.add(mesh);
@@ -224,6 +418,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     placedRef.current = [...placedRef.current, newItem];
     setPlaced([...placedRef.current]);
     setSelectedUid(uid);
+    if (isNarrow) setPanelOpen(false);
   }
 
   function removeItem(uid: string) {
@@ -232,8 +427,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     const found = placedRef.current.find((p) => p.uid === uid);
     if (found) {
       scene.remove(found.mesh);
-      found.mesh.geometry.dispose();
-      (found.mesh.material as THREE.Material).dispose();
+      disposeObject(found.mesh);
     }
     placedRef.current = placedRef.current.filter((p) => p.uid !== uid);
     setPlaced([...placedRef.current]);
@@ -244,26 +438,32 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
     ? FURNITURE_CATALOG
     : FURNITURE_CATALOG.filter((f) => f.category === activeCategory);
 
+  const panelStyle: React.CSSProperties = isNarrow
+    ? { position: 'absolute', left: 0, right: 0, bottom: 0, height: '62%', background: '#0f172af5', borderTop: '1px solid #1f2937', borderRadius: '16px 16px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 10, boxShadow: '0 -10px 30px rgba(0,0,0,.5)' }
+    : { width: 280, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 };
+
   return (
     <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
       {/* 3D Canvas */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0 }}>
         <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#475569', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-          🖱️ Arrastrar para rotar · Scroll para zoom · Click derecho para mover
-        </div>
+        {!isNarrow && (
+          <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '5px 14px', fontSize: '0.72rem', color: '#94a3b8', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+            🖱️ Arrastrar para rotar · Scroll para zoom · Click derecho para mover
+          </div>
+        )}
         <button
           onClick={() => setPanelOpen((o) => !o)}
-          style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.6)', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem' }}>
-          {panelOpen ? '▶ Ocultar panel' : '◀ Mostrar panel'}
+          style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(0,0,0,0.6)', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', padding: '7px 13px', fontSize: '0.8rem', zIndex: 11 }}>
+          {panelOpen ? (isNarrow ? '✕ Cerrar' : '▶ Ocultar panel') : '🛋️ Muebles y colores'}
         </button>
       </div>
 
-      {/* Side panel */}
+      {/* Side panel (hoja inferior en pantallas estrechas) */}
       {panelOpen && (
-        <div style={{ width: 280, background: '#0f172a', borderLeft: '1px solid #1f2937', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+        <div style={panelStyle}>
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #1f2937', flexShrink: 0 }}>
             {(['furniture', 'colors'] as const).map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 style={{ flex: 1, padding: '12px 8px', background: activeTab === tab ? '#1e293b' : 'transparent', border: 'none', color: activeTab === tab ? '#e2e8f0' : '#64748b', cursor: 'pointer', fontSize: '0.8rem', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent' }}>
@@ -273,7 +473,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
           </div>
 
           {activeTab === 'furniture' && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
               {/* Categories */}
               <div style={{ display: 'flex', gap: 4, padding: '8px 10px', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
                 {CATEGORIES.map((cat) => (
@@ -284,7 +484,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
                 ))}
               </div>
               {/* Catalog */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px', minHeight: 110 }}>
                 {filteredFurniture.map((item) => (
                   <button key={item.id} onClick={() => addFurniture(item)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 6, textAlign: 'left', transition: 'border-color 0.15s' }}
@@ -303,7 +503,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
               {placed.length > 0 && (
                 <div style={{ borderTop: '1px solid #1f2937', padding: '10px', flexShrink: 0 }}>
                   <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>En la habitación ({placed.length})</p>
-                  <div style={{ maxHeight: 120, overflowY: 'auto' }}>
+                  <div style={{ maxHeight: isNarrow ? 76 : 120, overflowY: 'auto' }}>
                     {placed.map((p) => (
                       <div key={p.uid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 6, background: selectedUid === p.uid ? '#1e3a5f' : 'transparent', marginBottom: 2 }}>
                         <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{p.item.emoji} {p.item.name}</span>
@@ -320,7 +520,7 @@ export default function RoomEditor({ uploadedImageUrl }: { uploadedImageUrl: str
           )}
 
           {activeTab === 'colors' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px', minHeight: 0 }}>
               <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '0 0 14px' }}>Color de paredes</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                 {WALL_COLORS.map((c) => (
