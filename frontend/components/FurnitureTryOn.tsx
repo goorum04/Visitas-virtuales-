@@ -20,6 +20,29 @@ interface PlacedItem {
   baseScale: number;
 }
 
+// Modelos reales CC0 (Poly Haven) + generados por IA, a escala real en metros
+const CATALOG: CatalogItem[] = [
+  { slug: 'sofa_ia_01',               name: 'Sofá terracota (IA)', category: 'Sala', file: 'sofa_ia_01.glb' },
+  { slug: 'Sofa_01',                  name: 'Sofá 2 plazas',       category: 'Sala' },
+  { slug: 'modern_arm_chair_01',      name: 'Sillón moderno',      category: 'Sala' },
+  { slug: 'mid_century_lounge_chair', name: 'Butaca mid-century',  category: 'Sala' },
+  { slug: 'CoffeeTable_01',           name: 'Mesa de centro',      category: 'Sala' },
+  { slug: 'side_table_01',            name: 'Mesa auxiliar',       category: 'Sala' },
+  { slug: 'round_wooden_table_01',    name: 'Mesa redonda',        category: 'Comedor' },
+  { slug: 'dining_chair_02',          name: 'Silla de comedor',    category: 'Comedor' },
+  { slug: 'Shelf_01',                 name: 'Estantería',          category: 'Almacenaje' },
+  { slug: 'Television_01',            name: 'TV vintage',          category: 'Decor' },
+  { slug: 'potted_plant_04',          name: 'Planta de interior',  category: 'Decor' },
+];
+
+const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Almacenaje', 'Decor'];
+
+const WALL_H = 3;
+const CAM_H = 1.35;
+const FOV = 52;
+// Orientación de cada foto (desde el mismo punto): frente, girada a la izquierda, girada a la derecha
+const PHOTO_YAWS = [0, 0.62, -0.62];
+
 // Estima la iluminación de la foto: lado de la luz, tinte, color de cielo/suelo y exposición
 function analyzePhotoLight(img: HTMLImageElement | HTMLCanvasElement) {
   const W = 32, H = 18;
@@ -76,64 +99,76 @@ function contactShadowTexture(): THREE.Texture {
   return tex;
 }
 
-// Modelos reales CC0 (Poly Haven) + generados por IA, a escala real en metros
-const CATALOG: CatalogItem[] = [
-  { slug: 'sofa_ia_01',               name: 'Sofá terracota (IA)', category: 'Sala', file: 'sofa_ia_01.glb' },
-  { slug: 'Sofa_01',                  name: 'Sofá 2 plazas',       category: 'Sala' },
-  { slug: 'modern_arm_chair_01',      name: 'Sillón moderno',      category: 'Sala' },
-  { slug: 'mid_century_lounge_chair', name: 'Butaca mid-century',  category: 'Sala' },
-  { slug: 'CoffeeTable_01',           name: 'Mesa de centro',      category: 'Sala' },
-  { slug: 'side_table_01',            name: 'Mesa auxiliar',       category: 'Sala' },
-  { slug: 'round_wooden_table_01',    name: 'Mesa redonda',        category: 'Comedor' },
-  { slug: 'dining_chair_02',          name: 'Silla de comedor',    category: 'Comedor' },
-  { slug: 'Shelf_01',                 name: 'Estantería',          category: 'Almacenaje' },
-  { slug: 'Television_01',            name: 'TV vintage',          category: 'Decor' },
-  { slug: 'potted_plant_04',          name: 'Planta de interior',  category: 'Decor' },
-];
-
-const CATEGORIES = ['Todos', 'Sala', 'Comedor', 'Almacenaje', 'Decor'];
-
-const WALL_H = 3;
-const CAM_H = 1.35;
-const FOV = 52;
-
-// Proyecta la foto desde la posición original de la cámara sobre la geometría de la habitación
+// Proyección multi-foto: cada zona de la habitación usa la foto que mejor la ve,
+// con fundido entre fotos y a oscuro donde ninguna llega (sin píxeles estirados)
 const projVert = /* glsl */ `
-  varying vec4 vProj;
-  uniform mat4 uProjectorVP;
+  varying vec3 vWorld;
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
-    vProj = uProjectorVP * wp;
+    vWorld = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
   }
 `;
 const projFrag = /* glsl */ `
-  uniform sampler2D uMap;
-  varying vec4 vProj;
+  uniform sampler2D uMap0; uniform mat4 uVP0; uniform vec3 uFwd0;
+  uniform sampler2D uMap1; uniform mat4 uVP1; uniform vec3 uFwd1;
+  uniform sampler2D uMap2; uniform mat4 uVP2; uniform vec3 uFwd2;
+  uniform int uCount;
+  uniform vec3 uBase;
+  uniform vec3 uViewDir;
+  varying vec3 vWorld;
+
+  // Ponderación por dirección de cámara (view-dependent): mirando hacia donde se
+  // tomó una foto, esa foto manda en toda la escena; al girar, funde a la siguiente.
+  float wgt(vec4 p, vec3 fwd) {
+    if (p.w <= 0.0) return 0.0;
+    vec2 uv = p.xy / p.w * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+    vec2 f = min(uv, 1.0 - uv);
+    float edge = smoothstep(0.0, 0.03, f.x) * smoothstep(0.0, 0.03, f.y);
+    float align = pow(max(dot(uViewDir, fwd), 0.0), 12.0);
+    // base pequeña: rellena zonas que la foto dominante no cubre, sin fantasmas visibles
+    return edge * (0.015 + align);
+  }
+  vec3 smp(sampler2D m, vec4 p) {
+    vec2 uv = clamp(p.xy / max(p.w, 0.0001) * 0.5 + 0.5, 0.0, 1.0);
+    return texture2D(m, uv).rgb;
+  }
   void main() {
-    vec2 uv = clamp((vProj.xy / max(vProj.w, 0.0001)) * 0.5 + 0.5, 0.0, 1.0);
-    gl_FragColor = texture2D(uMap, uv);
+    vec4 p0 = uVP0 * vec4(vWorld, 1.0);
+    float w0 = wgt(p0, uFwd0);
+    vec3 acc = smp(uMap0, p0) * w0;
+    float W = w0;
+    if (uCount > 1) { vec4 p1 = uVP1 * vec4(vWorld, 1.0); float w1 = wgt(p1, uFwd1); acc += smp(uMap1, p1) * w1; W += w1; }
+    if (uCount > 2) { vec4 p2 = uVP2 * vec4(vWorld, 1.0); float w2 = wgt(p2, uFwd2); acc += smp(uMap2, p2) * w2; W += w2; }
+    float k = smoothstep(0.0, 0.02, W);
+    vec3 col = W > 0.0005 ? acc / W : uBase;
+    gl_FragColor = vec4(mix(uBase, col, k), 1.0);
     #include <colorspace_fragment>
   }
 `;
 
-export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
+export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
-  const projectorRef = useRef<THREE.PerspectiveCamera | null>(null);
   const projMatRef = useRef<THREE.ShaderMaterial | null>(null);
+  const photoAspectsRef = useRef<number[]>([16 / 9, 16 / 9, 16 / 9]);
   const roomGroupRef = useRef<THREE.Group | null>(null);
   const placedRef = useRef<PlacedItem[]>([]);
   const selectedRef = useRef<PlacedItem | null>(null);
   const ringRef = useRef<THREE.Mesh | null>(null);
   const animRef = useRef<number>(0);
-  const photoAspectRef = useRef(16 / 9);
   const loaderRef = useRef(new GLTFLoader());
   const modelCacheRef = useRef<Map<string, THREE.Group>>(new Map());
+  const dirRef = useRef<THREE.DirectionalLight | null>(null);
+  const hemiRef = useRef<THREE.HemisphereLight | null>(null);
+  const baseLightRef = useRef({ dir: 1.8, hemi: 0.9 });
+
+  const nPhotos = Math.min(photoUrls.length, 3);
 
   const [placed, setPlaced] = useState<PlacedItem[]>([]);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
@@ -147,9 +182,6 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
   const [roomD, setRoomD] = useState(5.4);  // profundidad hasta la pared del fondo (m)
   const [itemScale, setItemScale] = useState(1);
   const [lightMul, setLightMul] = useState(1); // ajuste manual fino de la luz de los muebles
-  const dirRef = useRef<THREE.DirectionalLight | null>(null);
-  const hemiRef = useRef<THREE.HemisphereLight | null>(null);
-  const baseLightRef = useRef({ dir: 1.8, hemi: 0.9 });
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)');
@@ -159,6 +191,27 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
+
+  // Matrices de proyección de cada foto (posición común, orientaciones distintas)
+  function updateProjectors(tiltVal: number) {
+    const projMat = projMatRef.current;
+    if (!projMat) return;
+    for (let i = 0; i < 3; i++) {
+      const cam = new THREE.PerspectiveCamera(FOV, photoAspectsRef.current[i] || 16 / 9, 0.1, 60);
+      cam.position.set(0, CAM_H, 0);
+      cam.rotation.order = 'YXZ';
+      cam.rotation.y = PHOTO_YAWS[i];
+      cam.rotation.x = tiltVal;
+      cam.updateMatrixWorld(true);
+      cam.updateProjectionMatrix();
+      (projMat.uniforms[`uVP${i}`].value as THREE.Matrix4)
+        .multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+      fwd.y = 0;
+      fwd.normalize();
+      (projMat.uniforms[`uFwd${i}`].value as THREE.Vector3).copy(fwd);
+    }
+  }
 
   // Escena
   useEffect(() => {
@@ -175,10 +228,6 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     camera.position.set(0, CAM_H, 0);
     cameraRef.current = camera;
 
-    const projector = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.1, 60);
-    projector.position.set(0, CAM_H, 0);
-    projectorRef.current = projector;
-
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = true;
@@ -191,11 +240,15 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.5;
 
-    // Material de proyección (la foto pintada sobre suelo/paredes/techo)
+    const dummyTex = new THREE.Texture();
     const projMat = new THREE.ShaderMaterial({
       uniforms: {
-        uMap: { value: null },
-        uProjectorVP: { value: new THREE.Matrix4() },
+        uMap0: { value: dummyTex }, uVP0: { value: new THREE.Matrix4() }, uFwd0: { value: new THREE.Vector3(0, 0, -1) },
+        uMap1: { value: dummyTex }, uVP1: { value: new THREE.Matrix4() }, uFwd1: { value: new THREE.Vector3(0, 0, -1) },
+        uMap2: { value: dummyTex }, uVP2: { value: new THREE.Matrix4() }, uFwd2: { value: new THREE.Vector3(0, 0, -1) },
+        uCount: { value: nPhotos },
+        uBase: { value: new THREE.Color('#141210') },
+        uViewDir: { value: new THREE.Vector3(0, 0, -1) },
       },
       vertexShader: projVert,
       fragmentShader: projFrag,
@@ -204,7 +257,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     projMat.toneMapped = false;
     projMatRef.current = projMat;
 
-    // Luz para los muebles: se calibra automáticamente con la foto en cuanto carga
+    // Luz para los muebles: se calibra automáticamente con la foto frontal en cuanto carga
     const hemi = new THREE.HemisphereLight('#dfe8f5', '#7a6a58', 0.9);
     scene.add(hemi);
     hemiRef.current = hemi;
@@ -218,36 +271,43 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     scene.add(dir);
     dirRef.current = dir;
 
-    new THREE.TextureLoader().load(photoUrl, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.wrapS = THREE.ClampToEdgeWrapping;
-      tex.wrapT = THREE.ClampToEdgeWrapping;
-      projMat.uniforms.uMap.value = tex;
-      const img = tex.image as HTMLImageElement;
-      if (img?.width) {
-        photoAspectRef.current = img.width / img.height;
-        fit();
-      }
-      // Reflejos ambientales desde la propia foto: los muebles se tiñen del ambiente real
-      const envTex = tex.clone();
-      envTex.mapping = THREE.EquirectangularReflectionMapping;
-      scene.environment = pmrem.fromEquirectangular(envTex).texture;
-      scene.environmentIntensity = 0.75;
-      envTex.dispose();
-      // Dirección, color y exposición de la luz estimadas de la foto
-      const a = analyzePhotoLight(img);
-      if (a) {
-        dir.position.set(a.lightFromLeft ? -3 : 3, 4, 2.5);
-        dir.color.copy(a.sunColor);
-        hemi.color.copy(a.skyColor);
-        hemi.groundColor.copy(a.groundColor);
-        const dirI = 1.3 + a.meanLum * 1.1;
-        const hemiI = 0.55 + a.meanLum * 0.7;
-        baseLightRef.current = { dir: dirI, hemi: hemiI };
-        dir.intensity = dirI;
-        hemi.intensity = hemiI;
-        renderer.toneMappingExposure = Math.min(1.15, Math.max(0.85, 0.8 + a.meanLum * 0.45));
-      }
+    const texLoader = new THREE.TextureLoader();
+    photoUrls.slice(0, 3).forEach((url, i) => {
+      texLoader.load(url, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        projMat.uniforms[`uMap${i}`].value = tex;
+        const img = tex.image as HTMLImageElement;
+        if (img?.width) photoAspectsRef.current[i] = img.width / img.height;
+        updateProjectors(-0.2);
+        if (i === 0) {
+          fit();
+          // Reflejos ambientales desde la propia foto: los muebles se tiñen del ambiente real
+          const envTex = tex.clone();
+          envTex.mapping = THREE.EquirectangularReflectionMapping;
+          scene.environment = pmrem.fromEquirectangular(envTex).texture;
+          scene.environmentIntensity = 0.75;
+          envTex.dispose();
+          // Dirección, color y exposición de la luz estimadas de la foto
+          const a = analyzePhotoLight(img);
+          if (a) {
+            // zonas fuera de cobertura: penumbra del tono medio de la foto, no negro
+            const baseC = a.groundColor.clone().lerp(a.skyColor, 0.4).multiplyScalar(0.35);
+            (projMat.uniforms.uBase.value as THREE.Color).copy(baseC);
+            dir.position.set(a.lightFromLeft ? -3 : 3, 4, 2.5);
+            dir.color.copy(a.sunColor);
+            hemi.color.copy(a.skyColor);
+            hemi.groundColor.copy(a.groundColor);
+            const dirI = 1.3 + a.meanLum * 1.1;
+            const hemiI = 0.55 + a.meanLum * 0.7;
+            baseLightRef.current = { dir: dirI, hemi: hemiI };
+            dir.intensity = dirI;
+            hemi.intensity = hemiI;
+            renderer.toneMappingExposure = Math.min(1.15, Math.max(0.85, 0.8 + a.meanLum * 0.45));
+          }
+        }
+      });
     });
 
     // Sombra de contacto sobre el suelo fotográfico
@@ -271,19 +331,21 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     scene.add(ring);
     ringRef.current = ring;
 
-    // Órbita limitada: girar la habitación sin salirse de lo que cubre la foto
+    // Órbita: con más fotos, más ángulo útil sin zonas oscuras
+    const maxAz = nPhotos >= 3 ? 0.95 : nPhotos === 2 ? 0.7 : 0.32;
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
     controls.enablePan = false;
     controls.minDistance = 1.2;
     controls.maxDistance = 4.5;
-    controls.minAzimuthAngle = -0.55;
-    controls.maxAzimuthAngle = 0.55;
+    controls.minAzimuthAngle = -maxAz;
+    controls.maxAzimuthAngle = maxAz;
     controls.minPolarAngle = Math.PI / 2 - 0.45;
     controls.maxPolarAngle = Math.PI / 2 + 0.25;
-    // fijar el objetivo antes del primer update: si queda justo bajo la cámara, la vista se degenera
-    controls.target.set(0, 1.05, -2.4);
+    // el objetivo debe estar exactamente en la línea de mira del proyector frontal:
+    // así la vista inicial coincide píxel a píxel con la foto (sin dobles imágenes)
+    controls.target.set(0, CAM_H + 2.4 * Math.tan(-0.2), -2.4);
     camera.position.set(0, CAM_H, 0);
     controls.update();
     controlsRef.current = controls;
@@ -291,15 +353,13 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     const fit = () => {
       const aw = wrap.clientWidth, ah = wrap.clientHeight;
       if (!aw || !ah) return;
-      const pa = photoAspectRef.current;
+      const pa = photoAspectsRef.current[0];
       let w = aw, h = aw / pa;
       if (h > ah) { h = ah; w = ah * pa; }
       frame.style.width = `${w}px`;
       frame.style.height = `${h}px`;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      projector.aspect = w / h;
-      projector.updateProjectionMatrix();
       renderer.setSize(w, h, false);
     };
     const ro = new ResizeObserver(fit);
@@ -372,9 +432,14 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onUp);
 
+    const viewDir = new THREE.Vector3();
     const animate = () => {
       animRef.current = requestAnimationFrame(animate);
       controls.update();
+      camera.getWorldDirection(viewDir);
+      viewDir.y = 0;
+      viewDir.normalize();
+      (projMat.uniforms.uViewDir.value as THREE.Vector3).copy(viewDir);
       const sel = selectedRef.current;
       const ringM = ringRef.current;
       if (ringM) {
@@ -406,7 +471,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       renderer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photoUrl]);
+  }, [photoUrls.join('|')]);
 
   // Geometría de la habitación (se reconstruye al ajustar ancho/profundidad)
   useEffect(() => {
@@ -451,32 +516,30 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     scene.add(g);
     roomGroupRef.current = g;
 
-    // La órbita gira alrededor del centro de la habitación
+    // La órbita gira alrededor del centro de la habitación, sobre la línea de mira del proyector
     const controls = controlsRef.current;
     if (controls) {
-      controls.target.set(0, 1.05, -roomD * 0.45);
+      const tz = roomD * 0.45;
+      controls.target.set(0, CAM_H + tz * Math.tan(tilt), -tz);
       controls.update();
     }
-  }, [roomW, roomD]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomW, roomD, photoUrls.join('|')]);
 
-  // Matriz del proyector (inclinación / encuadre de la foto original)
+  // Recalcular proyectores al cambiar la inclinación (y realinear la vista)
   useEffect(() => {
-    const projector = projectorRef.current;
-    const projMat = projMatRef.current;
-    if (!projector || !projMat) return;
-    projector.rotation.x = tilt;
-    projector.updateMatrixWorld(true);
-    projector.updateProjectionMatrix();
-    (projMat.uniforms.uProjectorVP.value as THREE.Matrix4)
-      .multiplyMatrices(projector.projectionMatrix, projector.matrixWorldInverse);
-  }, [tilt, photoUrl]);
+    updateProjectors(tilt);
+    resetView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tilt, photoUrls.join('|')]);
 
   function resetView() {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
     camera.position.set(0, CAM_H, 0);
-    controls.target.set(0, 1.05, -roomD * 0.45);
+    const tz = roomD * 0.45;
+    controls.target.set(0, CAM_H + tz * Math.tan(tilt), -tz);
     controls.update();
   }
 
@@ -582,7 +645,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
 
   return (
     <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
-      {/* Visor: la habitación 3D reconstruida desde la foto */}
+      {/* Visor: la habitación 3D reconstruida desde las fotos */}
       <div ref={wrapRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0, background: '#05070d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div ref={frameRef} style={{ position: 'relative' }}>
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: 'grab' }} />
