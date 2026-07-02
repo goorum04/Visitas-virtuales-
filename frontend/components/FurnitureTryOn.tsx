@@ -356,13 +356,15 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] | nu
       // habitación 3D real: giro amplio y libre, nada se deforma
       // (distancia acotada para que la cámara no atraviese paredes ni cortinas)
       controls.minDistance = 1.3;
-      controls.maxDistance = 2.4;
+      controls.maxDistance = 2.6;
       controls.minAzimuthAngle = -1.05;
       controls.maxAzimuthAngle = 1.05;
       controls.minPolarAngle = Math.PI / 2 - 0.55;
       controls.maxPolarAngle = Math.PI / 2 + 0.22;
       controls.target.set(-0.15, 1.0, -0.8);
-      camera.position.set(0.55, 1.48, 2.45);
+      // en pantallas verticales la cámara arranca más cerca (el FOV ancho ya da contexto)
+      if (wrap.clientWidth < wrap.clientHeight) camera.position.set(0.38, 1.37, 1.72);
+      else camera.position.set(0.55, 1.48, 2.45);
     } else {
       // Órbita: con más fotos, más ángulo útil sin zonas oscuras
       const maxAz = nPhotos >= 3 ? 0.95 : nPhotos === 2 ? 0.7 : 0.32;
@@ -393,6 +395,13 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] | nu
       frame.style.width = `${w}px`;
       frame.style.height = `${h}px`;
       camera.aspect = w / h;
+      if (synthetic) {
+        // en pantallas verticales, mantener el ángulo HORIZONTAL (si no, todo sale enorme)
+        const a = w / h;
+        camera.fov = a >= 1.15
+          ? FOV
+          : Math.min(88, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(60) / 2) / a)));
+      }
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
     };
@@ -574,7 +583,9 @@ export default function FurnitureTryOn({ photoUrls }: { photoUrls: string[] | nu
     const controls = controlsRef.current;
     if (!camera || !controls) return;
     if (synthetic) {
-      camera.position.set(0.55, 1.48, 2.45);
+      const wrap = wrapRef.current;
+      if (wrap && wrap.clientWidth < wrap.clientHeight) camera.position.set(0.38, 1.37, 1.72);
+      else camera.position.set(0.55, 1.48, 2.45);
       controls.target.set(-0.15, 1.0, -0.8);
     } else {
       camera.position.set(0, CAM_H, 0);
