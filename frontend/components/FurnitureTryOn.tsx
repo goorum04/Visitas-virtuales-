@@ -9,6 +9,7 @@ interface CatalogItem {
   slug: string;
   name: string;
   category: string;
+  file?: string; // nombre de archivo dentro de /models/{slug}/; por defecto {slug}_1k.gltf
 }
 
 interface PlacedItem {
@@ -20,6 +21,7 @@ interface PlacedItem {
 
 // Modelos reales CC0 (Poly Haven), a escala real en metros, servidos desde /public/models
 const CATALOG: CatalogItem[] = [
+  { slug: 'sofa_ia_01',               name: 'Sofá terracota (IA)', category: 'Sala', file: 'sofa_ia_01.glb' },
   { slug: 'Sofa_01',                  name: 'Sofá 2 plazas',       category: 'Sala' },
   { slug: 'modern_arm_chair_01',      name: 'Sillón moderno',      category: 'Sala' },
   { slug: 'mid_century_lounge_chair', name: 'Butaca mid-century',  category: 'Sala' },
@@ -260,7 +262,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
   async function loadModel(item: CatalogItem): Promise<THREE.Group> {
     const cached = modelCacheRef.current.get(item.slug);
     if (cached) return cached.clone(true);
-    const gltf = await loaderRef.current.loadAsync(`/models/${item.slug}/${item.slug}_1k.gltf`);
+    const gltf = await loaderRef.current.loadAsync(`/models/${item.slug}/${item.file ?? `${item.slug}_1k.gltf`}`);
     const root = gltf.scene;
     root.traverse((n) => {
       if (n instanceof THREE.Mesh) {
