@@ -20,6 +20,62 @@ interface PlacedItem {
   baseScale: number;
 }
 
+// Estima la iluminación de la foto: lado de la luz, tinte, color de cielo/suelo y exposición
+function analyzePhotoLight(img: HTMLImageElement | HTMLCanvasElement) {
+  const W = 32, H = 18;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let lLum = 0, rLum = 0, ln = 0, rn = 0, sum = 0;
+  const top = [0, 0, 0]; let tn = 0;
+  const bot = [0, 0, 0]; let bn = 0;
+  const bright = [0, 0, 0]; let bc = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      sum += lum;
+      if (x < W * 0.38) { lLum += lum; ln++; } else if (x > W * 0.62) { rLum += lum; rn++; }
+      if (y < H * 0.4) { top[0] += r; top[1] += g; top[2] += b; tn++; }
+      if (y > H * 0.65) { bot[0] += r; bot[1] += g; bot[2] += b; bn++; }
+      if (lum > 210) { bright[0] += r; bright[1] += g; bright[2] += b; bc++; }
+    }
+  }
+  const norm = (acc: number[], n: number) => new THREE.Color(acc[0] / n / 255, acc[1] / n / 255, acc[2] / n / 255);
+  const sun = bc > 4 ? norm(bright, bc) : new THREE.Color('#fff2dd');
+  // acercar el color del sol al blanco para no sobresaturar
+  sun.lerp(new THREE.Color('#ffffff'), 0.35);
+  return {
+    lightFromLeft: lLum / Math.max(ln, 1) >= rLum / Math.max(rn, 1),
+    skyColor: norm(top, tn).lerp(new THREE.Color('#ffffff'), 0.25),
+    groundColor: norm(bot, bn),
+    sunColor: sun,
+    meanLum: sum / (W * H) / 255,
+  };
+}
+
+// Sombra de contacto: degradado radial bajo cada mueble
+let contactTexCache: THREE.Texture | null = null;
+function contactShadowTexture(): THREE.Texture {
+  if (contactTexCache) return contactTexCache;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d')!;
+  const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(0,0,0,0.5)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.28)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  contactTexCache = tex;
+  return tex;
+}
+
 // Modelos reales CC0 (Poly Haven) + generados por IA, a escala real en metros
 const CATALOG: CatalogItem[] = [
   { slug: 'sofa_ia_01',               name: 'Sofá terracota (IA)', category: 'Sala', file: 'sofa_ia_01.glb' },
@@ -90,6 +146,10 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
   const [roomW, setRoomW] = useState(4.6);  // ancho de la habitación (m)
   const [roomD, setRoomD] = useState(5.4);  // profundidad hasta la pared del fondo (m)
   const [itemScale, setItemScale] = useState(1);
+  const [lightMul, setLightMul] = useState(1); // ajuste manual fino de la luz de los muebles
+  const dirRef = useRef<THREE.DirectionalLight | null>(null);
+  const hemiRef = useRef<THREE.HemisphereLight | null>(null);
+  const baseLightRef = useRef({ dir: 1.8, hemi: 0.9 });
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)');
@@ -122,13 +182,14 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.VSMShadowMap; // sombras suaves de área, no bordes duros
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.5;
 
     // Material de proyección (la foto pintada sobre suelo/paredes/techo)
     const projMat = new THREE.ShaderMaterial({
@@ -143,6 +204,20 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     projMat.toneMapped = false;
     projMatRef.current = projMat;
 
+    // Luz para los muebles: se calibra automáticamente con la foto en cuanto carga
+    const hemi = new THREE.HemisphereLight('#dfe8f5', '#7a6a58', 0.9);
+    scene.add(hemi);
+    hemiRef.current = hemi;
+    const dir = new THREE.DirectionalLight('#fff2dd', 1.8);
+    dir.position.set(-3, 4, 2.5);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.bias = -0.0002;
+    dir.shadow.radius = 7;
+    dir.shadow.blurSamples = 16;
+    scene.add(dir);
+    dirRef.current = dir;
+
     new THREE.TextureLoader().load(photoUrl, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -153,17 +228,27 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
         photoAspectRef.current = img.width / img.height;
         fit();
       }
+      // Reflejos ambientales desde la propia foto: los muebles se tiñen del ambiente real
+      const envTex = tex.clone();
+      envTex.mapping = THREE.EquirectangularReflectionMapping;
+      scene.environment = pmrem.fromEquirectangular(envTex).texture;
+      scene.environmentIntensity = 0.75;
+      envTex.dispose();
+      // Dirección, color y exposición de la luz estimadas de la foto
+      const a = analyzePhotoLight(img);
+      if (a) {
+        dir.position.set(a.lightFromLeft ? -3 : 3, 4, 2.5);
+        dir.color.copy(a.sunColor);
+        hemi.color.copy(a.skyColor);
+        hemi.groundColor.copy(a.groundColor);
+        const dirI = 1.3 + a.meanLum * 1.1;
+        const hemiI = 0.55 + a.meanLum * 0.7;
+        baseLightRef.current = { dir: dirI, hemi: hemiI };
+        dir.intensity = dirI;
+        hemi.intensity = hemiI;
+        renderer.toneMappingExposure = Math.min(1.15, Math.max(0.85, 0.8 + a.meanLum * 0.45));
+      }
     });
-
-    // Luz para los muebles (la habitación lleva la luz "horneada" en la foto)
-    const hemi = new THREE.HemisphereLight('#dfe8f5', '#7a6a58', 0.9);
-    scene.add(hemi);
-    const dir = new THREE.DirectionalLight('#fff2dd', 1.8);
-    dir.position.set(-3, 4, 2.5);
-    dir.castShadow = true;
-    dir.shadow.mapSize.set(2048, 2048);
-    dir.shadow.bias = -0.0004;
-    scene.add(dir);
 
     // Sombra de contacto sobre el suelo fotográfico
     const shadowPlane = new THREE.Mesh(
@@ -401,6 +486,12 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
     if (sel) sel.object.scale.setScalar(sel.baseScale * itemScale);
   }, [itemScale, selectedUid]);
 
+  // Ajuste manual fino sobre la luz calibrada automáticamente
+  useEffect(() => {
+    if (dirRef.current) dirRef.current.intensity = baseLightRef.current.dir * lightMul;
+    if (hemiRef.current) hemiRef.current.intensity = baseLightRef.current.hemi * lightMul;
+  }, [lightMul]);
+
   async function loadModel(item: CatalogItem): Promise<THREE.Group> {
     const cached = modelCacheRef.current.get(item.slug);
     if (cached) return cached.clone(true);
@@ -410,8 +501,23 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       if (n instanceof THREE.Mesh) {
         n.castShadow = true;
         n.receiveShadow = true;
+        const m = n.material as THREE.MeshStandardMaterial;
+        if (m?.isMaterial && 'envMapIntensity' in m) m.envMapIntensity = 1.0;
       }
     });
+    // Sombra de contacto pegada a la base: ancla el mueble al suelo de la foto
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const blob = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: contactShadowTexture(), transparent: true, opacity: 0.55, depthWrite: false })
+    );
+    blob.rotation.x = -Math.PI / 2;
+    blob.scale.set(size.x * 1.18, size.z * 1.18, 1);
+    blob.position.set(center.x, box.min.y + 0.004, center.z);
+    blob.renderOrder = 1;
+    root.add(blob);
     modelCacheRef.current.set(item.slug, root);
     return root.clone(true);
   }
@@ -430,7 +536,7 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       const slotX = [0, 1.5, -1.5, 2.3, -2.3, 0.8, -0.8].map((x) => Math.max(-maxX, Math.min(maxX, x)));
       obj.position.y = -box.min.y;
       obj.position.x = slotX[n % slotX.length];
-      obj.position.z = -roomD * 0.45;
+      obj.position.z = -Math.min(roomD * 0.62, roomD - 0.8);
       obj.rotation.y = (Math.random() - 0.5) * 0.3;
       scene.add(obj);
       const entry: PlacedItem = { uid: `${item.slug}-${Date.now()}`, item, object: obj, baseScale: obj.scale.x };
@@ -480,6 +586,8 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
       <div ref={wrapRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0, background: '#05070d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div ref={frameRef} style={{ position: 'relative' }}>
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: 'grab' }} />
+          {/* grano sutil que unifica foto y render */}
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, mixBlendMode: 'overlay', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
         </div>
 
         {!isNarrow && (
@@ -529,6 +637,10 @@ export default function FurnitureTryOn({ photoUrl }: { photoUrl: string }) {
               <label style={sliderRow}>
                 Horizonte
                 <input type="range" min={-0.5} max={-0.02} step={0.01} value={tilt} onChange={(e) => setTilt(parseFloat(e.target.value))} style={{ width: 130 }} />
+              </label>
+              <label style={sliderRow}>
+                Luz de los muebles
+                <input type="range" min={0.5} max={1.7} step={0.05} value={lightMul} onChange={(e) => setLightMul(parseFloat(e.target.value))} style={{ width: 130 }} />
               </label>
               <button onClick={resetView}
                 style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', cursor: 'pointer', padding: '5px 0', fontSize: '0.72rem' }}>
